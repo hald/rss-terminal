@@ -48,6 +48,9 @@ class RSSTerminalApp:
         self.refresh_interval = 60  # default to 60 seconds
         self.last_seen_guids = {}
         self.articles = []  # Will store all articles
+        self.filtered_articles = []  # Will store filtered articles
+        self.selected_article_index = -1  # -1 means no selection
+        self.has_selection = False  # Track if any article is currently selected
         self.timezone = "America/Los_Angeles"  # Default timezone (GMT-7/8)
         self.last_check_time = None
         self.current_filter = "ALL"  # Default to show all feeds
@@ -64,7 +67,8 @@ class RSSTerminalApp:
             'red': '#FF4500',
             'blue': '#1E90FF',
             'source': '#FF8C00',  # Orange
-            'time': '#808080'  # Gray
+            'time': '#808080',  # Gray
+            'selected': '#0066CC'  # Blue for selected item
         }
         
         # Create UI
@@ -125,8 +129,7 @@ class RSSTerminalApp:
                                                     font=self.terminal_font, wrap=tk.NONE,
                                                     insertbackground=self.colors['text'],
                                                     selectbackground='#333333',
-                                                    selectforeground=self.colors['text'],
-                                                    cursor="hand2")  # Change cursor to hand when hovering
+                                                    selectforeground=self.colors['text'])
         self.content_text.pack(fill=tk.BOTH, expand=True, padx=0, pady=0)
         self.content_text.config(state=tk.DISABLED)  # Make read-only
         
@@ -136,9 +139,22 @@ class RSSTerminalApp:
         self.content_text.tag_configure("number", foreground=self.colors['yellow'])
         self.content_text.tag_configure("source", foreground=self.colors['source'])
         self.content_text.tag_configure("time", foreground=self.colors['time'])
+        self.content_text.tag_configure("selected", foreground=self.colors['text'], background=self.colors['selected'])  # Selected item
         
-        # Bind click event to content text
-        self.content_text.bind("<Button-1>", self.on_text_click)
+        # Bind keyboard events for navigation
+        self.root.bind("<Up>", self.select_previous_article)
+        self.root.bind("<Down>", self.select_next_article)
+        self.root.bind("<Return>", self.open_selected_article)
+        self.root.bind("<space>", self.open_selected_article)
+        self.root.bind("<Escape>", self.unselect_article)  # Add ESC to unselect
+        
+        # Key bindings for feed switching
+        self.root.bind("<Alt-a>", lambda e: self.set_filter("ALL"))
+        self.root.bind("<F5>", lambda e: self.fetch_all_feeds())
+        
+        # Cycling through feeds with Tab and Shift+Tab
+        self.root.bind("<Tab>", self.cycle_next_feed)
+        self.root.bind("<Shift-Tab>", self.cycle_previous_feed)
         
         # Status bar at bottom
         self.status_frame = tk.Frame(self.root, bg='#333333', height=22)
@@ -148,6 +164,12 @@ class RSSTerminalApp:
                                      text=f"Monitoring {len(self.feeds)} feeds | Refresh: {self.refresh_interval}s", 
                                      font=self.terminal_font, bg='#333333', fg='#CCCCCC', anchor='w')
         self.status_label.pack(side=tk.LEFT, padx=10, fill=tk.X, expand=True)
+        
+        # Add keyboard shortcuts info
+        shortcuts_label = tk.Label(self.status_frame,
+                                  text="↑/↓: Navigate | Enter: Open | Tab: Cycle Feeds | F5: Refresh",
+                                  font=self.terminal_font, bg='#333333', fg='#AAAAAA', anchor='e')
+        shortcuts_label.pack(side=tk.RIGHT, padx=10)
         
         # Add startup sequence
         self.show_startup_sequence()
@@ -187,9 +209,13 @@ class RSSTerminalApp:
             self.root.update()
             time.sleep(0.3)
         
-        # Final instructions
-        self.update_text("Click on any headline to open the full article in your browser.\n\n", 
-                        text_style="headline")
+        # Final instructions with keyboard navigation info
+        self.update_text("KEYBOARD SHORTCUTS:\n", text_style="headline")
+        self.update_text("  ↑/↓ : Navigate between headlines\n", text_style="source")
+        self.update_text("  Enter/Space : Open selected article in browser\n", text_style="source")
+        self.update_text("  ESC : Unselect current article\n", text_style="source")
+        self.update_text("  Tab/Shift+Tab : Cycle between feeds\n", text_style="source")
+        self.update_text("  F5 : Refresh all feeds\n\n", text_style="source")
         
         # Perform first fetch after a short delay
         self.root.after(1000, self.initial_fetch)
@@ -384,6 +410,9 @@ class RSSTerminalApp:
             self.filtered_articles = self.articles.copy()
         else:
             self.filtered_articles = [a for a in self.articles if a['source'] == self.current_filter]
+        
+        # Don't automatically select any article by default - user must use arrow keys
+        self.selected_article_index = -1
         
         # Clear display
         self.content_text.config(state=tk.NORMAL)
@@ -591,6 +620,99 @@ class RSSTerminalApp:
         
         # Schedule next flash with next color (every 400ms)
         self.root.after(400, lambda: self.flash_new_articles((step + 1) % len(colors)))
+    
+    def select_previous_article(self, event=None):
+        """Select the previous article in the list"""
+        if not self.filtered_articles:
+            return "break"  # No articles to navigate
+        
+        # Decrement the index, wrapping around if necessary
+        if self.selected_article_index > 0:
+            self.selected_article_index -= 1
+        else:
+            self.selected_article_index = len(self.filtered_articles) - 1
+        
+        # Highlight the selected article
+        self.highlight_selected_article()
+        return "break"  # Prevent default handling
+
+    def select_next_article(self, event=None):
+        """Select the next article in the list"""
+        if not self.filtered_articles:
+            return "break"  # No articles to navigate
+        
+        # Increment the index, wrapping around if necessary
+        if self.selected_article_index < len(self.filtered_articles) - 1:
+            self.selected_article_index += 1
+        else:
+            self.selected_article_index = 0
+        
+        # Highlight the selected article
+        self.highlight_selected_article()
+        return "break"  # Prevent default handling
+
+    def open_selected_article(self, event=None):
+        """Open the currently selected article in a web browser"""
+        if not self.filtered_articles or self.selected_article_index >= len(self.filtered_articles):
+            return "break"  # No articles or invalid index
+        
+        article = self.filtered_articles[self.selected_article_index]
+        self.update_status(f"Opening article: {article['title']}")
+        webbrowser.open(article['link'])
+        return "break"  # Prevent default handling
+
+    def highlight_selected_article(self):
+        """Highlight the currently selected article"""
+        if not self.filtered_articles:
+            return  # No articles to highlight
+            
+        # First, remove all selection highlights
+        self.content_text.tag_remove("selected", "1.0", tk.END)
+        
+        # Add 2 for the header lines
+        line_num = self.selected_article_index + 2
+        
+        # Apply selected style to the current line
+        line_start = f"{line_num}.0"
+        line_end = f"{line_num}.end"
+        
+        self.content_text.tag_add("selected", line_start, line_end)
+        
+        # Ensure the selected line is visible
+        self.content_text.see(line_start)
+        
+        # Update status with selected article info
+        article = self.filtered_articles[self.selected_article_index]
+        self.update_status(f"Selected: {article['title']}")
+    
+    def cycle_next_feed(self, event=None):
+        """Cycle to the next feed in the list"""
+        feed_names = ["ALL"] + [feed["name"] for feed in self.feeds]
+        current_index = feed_names.index(self.current_filter)
+        next_index = (current_index + 1) % len(feed_names)
+        self.set_filter(feed_names[next_index])
+        return "break"  # Prevent default tab behavior
+
+    def cycle_previous_feed(self, event=None):
+        """Cycle to the previous feed in the list"""
+        feed_names = ["ALL"] + [feed["name"] for feed in self.feeds]
+        current_index = feed_names.index(self.current_filter)
+        prev_index = (current_index - 1) % len(feed_names)
+        self.set_filter(feed_names[prev_index])
+        return "break"  # Prevent default tab behavior
+    
+    def unselect_article(self, event=None):
+        """Unselect any selected article and return to default view"""
+        # Reset the selection index
+        self.selected_article_index = -1
+        
+        # Remove all selection highlights
+        self.content_text.tag_remove("selected", "1.0", tk.END)
+        
+        # Reset the status bar to default message
+        self.update_status(f"Monitoring {len(self.feeds)} feeds | Refresh: {self.refresh_interval}s")
+        
+        return "break"  # Prevent default handling
     
     def on_closing(self):
         self.running = False
