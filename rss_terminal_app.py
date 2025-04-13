@@ -397,6 +397,10 @@ class RSSTerminalApp:
         
         self.update_text(f"{filter_text} - {len(self.filtered_articles)} Headlines\n", text_style="headline")
         
+        # Track if any new articles are displayed
+        self.new_article_tags = []  # Store tags for flashing effect
+        displayed_new_articles = False
+        
         # Display each article as a Bloomberg-like news item
         for idx, article in enumerate(self.filtered_articles):
             # Format row number
@@ -408,7 +412,14 @@ class RSSTerminalApp:
             
             # Check if this is a new article and should be highlighted
             if article.get('is_new', False):
-                self.update_text(headline_text, text_style="new_headline")
+                # Insert with unique tag for this article to enable flashing
+                tag_name = f"new_headline_{idx}"
+                self.content_text.config(state=tk.NORMAL)
+                position = self.content_text.index(tk.END)
+                self.content_text.insert(tk.END, headline_text, tag_name)
+                self.content_text.tag_configure(tag_name, foreground="#FFFFFF", background="#004400")
+                self.new_article_tags.append(tag_name)
+                displayed_new_articles = True
             else:
                 self.update_text(headline_text, text_style="headline")
             
@@ -430,6 +441,13 @@ class RSSTerminalApp:
             # Add source code and time
             self.update_text(f"{article['source']} ", text_style="source")
             self.update_text(f"{article['pub_date_str']}\n", text_style="time")
+        
+        # If we displayed any new articles, start flashing and schedule them to be "un-highlighted" after a delay
+        if displayed_new_articles:
+            # Start flashing effect for new articles
+            self.flash_new_articles(0)
+            # Schedule the reset of is_new flags after 30 seconds
+            self.root.after(30000, self.reset_new_article_flags)
     
     def cleanup_old_articles(self):
         """Remove old articles to prevent memory issues during long-term use"""
@@ -496,7 +514,8 @@ class RSSTerminalApp:
                             'pub_date': pub_date,
                             'pub_date_str': self.get_formatted_time(pub_date),
                             'link': entry.link if hasattr(entry, 'link') else "",
-                            'source': feed_title
+                            'source': feed_title,
+                            'is_new': True  # Mark as new for highlighting
                         })
                         
                         # Mark as seen
@@ -538,6 +557,40 @@ class RSSTerminalApp:
             self.update_status(f"Updated with {len(new_articles)} new articles. Total: {len(self.articles)} | Last check: {dt.now().strftime('%H:%M:%S')}")
         else:
             self.update_status(f"No new updates | Last check: {dt.now().strftime('%H:%M:%S')}")
+    
+    def reset_new_article_flags(self):
+        """Reset the is_new flag on all articles and refresh the display"""
+        # Reset the is_new flag on all articles
+        for article in self.articles:
+            if article.get('is_new', False):
+                article['is_new'] = False
+        
+        # Refresh the display to show articles without highlighting
+        self.display_articles()
+    
+    def flash_new_articles(self, step):
+        """Create a flashing effect for new articles
+        Alternates between different highlighting colors"""
+        if not hasattr(self, 'new_article_tags') or not self.new_article_tags:
+            return  # No new articles to flash
+            
+        # Colors for flashing effect (alternating between darker and lighter green)
+        colors = [
+            {"fg": "#FFFFFF", "bg": "#004400"},  # Dark green
+            {"fg": "#FFFFFF", "bg": "#006600"},  # Medium green
+            {"fg": "#FFFFFF", "bg": "#008800"},  # Light green
+            {"fg": "#FFFFFF", "bg": "#006600"}   # Medium green (transitioning back to dark)
+        ]
+        
+        # Get the current color based on step
+        color = colors[step % len(colors)]
+        
+        # Apply the color to all new article tags
+        for tag in self.new_article_tags:
+            self.content_text.tag_configure(tag, foreground=color["fg"], background=color["bg"])
+        
+        # Schedule next flash with next color (every 400ms)
+        self.root.after(400, lambda: self.flash_new_articles((step + 1) % len(colors)))
     
     def on_closing(self):
         self.running = False
