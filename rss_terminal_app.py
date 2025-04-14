@@ -8,10 +8,13 @@ import datetime
 import random
 import json
 import webbrowser
+import html
+import re
 from tkinter import font, scrolledtext
 from datetime import datetime as dt
 import pytz
 from dateutil import parser
+import html2text
 
 class RSSTerminalApp:
     def __init__(self, root):
@@ -971,10 +974,30 @@ class RSSTerminalApp:
         )
         desc_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
         
-        # Get description if available, otherwise show placeholder
+        # Get description if available, convert HTML to text if needed
         description = "No description available for this article."
         if 'description' in article and article['description']:
-            description = article['description']
+            # First try direct HTML unescaping (simpler and often works better for simple HTML)
+            description = html.unescape(article['description'])
+            
+            # If it still looks like HTML, use html2text for conversion
+            if "<" in description and ">" in description:
+                # Initialize html2text converter with some configuration
+                h = html2text.HTML2Text()
+                h.ignore_links = False
+                h.ignore_images = True
+                h.body_width = 0  # Don't wrap text at a specific width
+                h.unicode_snob = True  # Use Unicode instead of ASCII
+                
+                try:
+                    # Convert HTML to markdown-style text
+                    description = h.handle(description)
+                except Exception:
+                    # If html2text fails, go back to the unescaped version
+                    pass
+            
+            # Clean up the description text for better readability
+            description = self.clean_description_text(description)
             
         desc_text.insert(tk.END, description)
         desc_text.config(state=tk.DISABLED)  # Make read-only
@@ -1033,6 +1056,52 @@ class RSSTerminalApp:
         
         return "break"
         
+    def clean_description_text(self, text):
+        """Clean up HTML or markdown text for better readability"""
+        if not text:
+            return text
+            
+        # Remove empty markdown links like [](url)
+        text = re.sub(r'\[\]\(([^)]+)\)', r'\1', text)
+        
+        # Replace markdown links with text and URL
+        text = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', r'\1 (\2)', text)
+        
+        # Replace consecutive spaces with a single space
+        text = re.sub(r' {2,}', ' ', text)
+        
+        # Remove multiple asterisks (bold/italic formatting)
+        text = re.sub(r'\*\*([^*]+)\*\*', r'\1', text)
+        text = re.sub(r'\*([^*]+)\*', r'\1', text)
+        
+        # Remove multiple underscores (bold/italic formatting)
+        text = re.sub(r'__([^_]+)__', r'\1', text)
+        text = re.sub(r'_([^_]+)_', r'\1', text)
+        
+        # Clean up quotes
+        text = re.sub(r'> ', '', text)
+        
+        # Convert multiple new lines to double new lines for paragraph breaks
+        text = re.sub(r'\n{3,}', '\n\n', text)
+        
+        # Replace horizontal rules (--- or ***) with a clean separator
+        text = re.sub(r'(\-{3,}|\*{3,})', '\n' + '-' * 40 + '\n', text)
+        
+        # Add proper spacing after periods if missing
+        text = re.sub(r'\.([A-Z])', r'. \1', text)
+        
+        # Cleanup any HTML entities that might remain
+        text = html.unescape(text)
+        
+        # Handle common HTML tags that might remain
+        text = re.sub(r'</?br\s*/?>', '\n', text)
+        text = re.sub(r'</?p\s*/?>', '\n\n', text)
+        
+        # General cleanup of any remaining HTML tags
+        text = re.sub(r'<[^>]+>', '', text)
+        
+        return text.strip()
+    
     def page_up(self, event=None):
         """Move the selection up by several items"""
         if not self.filtered_articles:
