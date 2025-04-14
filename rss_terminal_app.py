@@ -54,6 +54,11 @@ class RSSTerminalApp:
         self.timezone = "America/Los_Angeles"  # Default timezone (GMT-7/8)
         self.last_check_time = None
         self.current_filter = "ALL"  # Default to show all feeds
+        
+        # Jump to number feature
+        self.goto_mode = False
+        self.goto_number = ""
+        
         self.load_config()
         
         # Bloomberg-like colors
@@ -148,6 +153,22 @@ class RSSTerminalApp:
         self.root.bind("<space>", self.open_selected_article)
         self.root.bind("<Escape>", self.unselect_article)  # Add ESC to unselect
         
+        # New keyboard shortcuts
+        self.root.bind("g", self.start_goto_mode)                   # Go to article by number
+        self.root.bind("d", self.show_article_description)          # Show description for selected article
+        
+        # Command for paging up/down with selection
+        self.root.bind("<Command-Up>", self.page_up)                # Page up with Command+Up (Mac)
+        self.root.bind("<Command-Down>", self.page_down)            # Page down with Command+Down (Mac)
+        
+        # Command+Shift for jumping to first/last (replacing Option/Alt bindings)
+        self.root.bind("<Command-Shift-Up>", self.jump_to_first)    # Jump to first article
+        self.root.bind("<Command-Shift-Down>", self.jump_to_last)   # Jump to last article
+        
+        # Bind number keys for goto mode
+        for i in range(10):
+            self.root.bind(str(i), self.handle_number_key)
+        
         # Key bindings for feed switching
         self.root.bind("<Alt-a>", lambda e: self.set_filter("ALL"))
         self.root.bind("<F5>", lambda e: self.fetch_all_feeds())
@@ -215,7 +236,11 @@ class RSSTerminalApp:
         self.update_text("  Enter/Space : Open selected article in browser\n", text_style="source")
         self.update_text("  ESC : Unselect current article\n", text_style="source")
         self.update_text("  Tab/Shift+Tab : Cycle between feeds\n", text_style="source")
-        self.update_text("  F5 : Refresh all feeds\n\n", text_style="source")
+        self.update_text("  F5 : Refresh all feeds\n", text_style="source")
+        self.update_text("  g  : Go to article by number\n", text_style="source")
+        self.update_text("  d  : Show description of selected article\n", text_style="source")
+        self.update_text("  ⌘+↑/↓ : Page up/down in article list\n", text_style="source")
+        self.update_text("  ⌘+Shift+↑/↓ : Jump to first/last article\n\n", text_style="source")
         
         # Perform first fetch after a short delay
         self.root.after(1000, self.initial_fetch)
@@ -547,7 +572,8 @@ class RSSTerminalApp:
                         'pub_date_str': self.get_formatted_time(pub_date),
                         'link': entry.link if hasattr(entry, 'link') else "",
                         'source': feed_title,
-                        'is_new': is_new  # Mark as new for highlighting if it's new
+                        'is_new': is_new,  # Mark as new for highlighting if it's new
+                        'description': entry.description if hasattr(entry, 'description') else None
                     })
                     
                     # Mark as seen if it's new
@@ -716,6 +742,170 @@ class RSSTerminalApp:
         # Reset the status bar to default message
         self.update_status(f"Monitoring {len(self.feeds)} feeds | Refresh: {self.refresh_interval}s")
         
+        return "break"  # Prevent default handling
+    
+    def start_goto_mode(self, event=None):
+        """Enter goto mode to jump to a specific article by number"""
+        if not self.filtered_articles:
+            return "break"  # No articles to navigate to
+            
+        self.goto_mode = True
+        self.goto_number = ""
+        self.update_status("Go to article #: _")
+        return "break"
+        
+    def handle_number_key(self, event=None):
+        """Handle number key press - either in goto mode or normal mode"""
+        if self.goto_mode:
+            # In goto mode, add the number to the goto_number string
+            self.goto_number += event.char
+            self.update_status(f"Go to article #: {self.goto_number}_")
+            
+            # If Enter is pressed or Return key is pressed, jump to that article
+            self.root.bind("<Return>", self.execute_goto)
+            
+            return "break"
+        return None  # Let the event propagate if not in goto mode
+        
+    def execute_goto(self, event=None):
+        """Execute the goto command with the entered number"""
+        if not self.goto_mode or not self.goto_number.isdigit():
+            self.goto_mode = False
+            # Restore normal Enter behavior
+            self.root.bind("<Return>", self.open_selected_article)
+            return "break"
+            
+        article_num = int(self.goto_number)
+        
+        # Article numbers are 1-indexed in display, but 0-indexed in the list
+        if 1 <= article_num <= len(self.filtered_articles):
+            self.selected_article_index = article_num - 1
+            self.highlight_selected_article()
+            
+        # Exit goto mode
+        self.goto_mode = False
+        self.goto_number = ""
+        
+        # Restore normal Enter binding
+        self.root.bind("<Return>", self.open_selected_article)
+        
+        return "break"
+        
+    def show_article_description(self, event=None):
+        """Show description for the selected article"""
+        if not self.filtered_articles or self.selected_article_index < 0:
+            self.update_status("No article selected")
+            return "break"
+            
+        article = self.filtered_articles[self.selected_article_index]
+        
+        # Create a popup window for description
+        desc_window = tk.Toplevel(self.root)
+        desc_window.title(f"Article Description - {article['source']}")
+        desc_window.configure(bg=self.colors['bg'])
+        
+        # Set window size and position relative to main window
+        window_width = 600
+        window_height = 400
+        x = self.root.winfo_x() + (self.root.winfo_width() - window_width) // 2
+        y = self.root.winfo_y() + (self.root.winfo_height() - window_height) // 2
+        desc_window.geometry(f'{window_width}x{window_height}+{x}+{y}')
+        
+        # Add article title
+        title_frame = tk.Frame(desc_window, bg=self.colors['header_bg'])
+        title_frame.pack(fill=tk.X, padx=0, pady=0)
+        
+        title_label = tk.Label(title_frame, text=article['title'], 
+                              font=self.header_font, bg=self.colors['header_bg'],
+                              fg=self.colors['text'], anchor='w', padx=10, pady=5)
+        title_label.pack(fill=tk.X, expand=True)
+        
+        # Add description text area
+        desc_text = scrolledtext.ScrolledText(desc_window, bg=self.colors['bg'], 
+                                            fg=self.colors['text'], font=self.terminal_font,
+                                            wrap=tk.WORD, padx=10, pady=10)
+        desc_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        # Get description if available, otherwise show placeholder
+        description = "No description available for this article."
+        if 'description' in article and article['description']:
+            description = article['description']
+            
+        desc_text.insert(tk.END, description)
+        desc_text.config(state=tk.DISABLED)  # Make read-only
+        
+        # Add close button
+        button_frame = tk.Frame(desc_window, bg=self.colors['bg'])
+        button_frame.pack(fill=tk.X, padx=10, pady=10)
+        
+        close_button = tk.Button(button_frame, text="Close", command=desc_window.destroy,
+                                bg='#333333', fg=self.colors['text'],
+                                activebackground='#555555', activeforeground=self.colors['text'])
+        close_button.pack(side=tk.RIGHT)
+        
+        # Bind Escape to close the window
+        desc_window.bind("<Escape>", lambda e: desc_window.destroy())
+        
+        # Make the window modal
+        desc_window.transient(self.root)
+        desc_window.grab_set()
+        
+        return "break"
+        
+    def page_up(self, event=None):
+        """Move the selection up by several items"""
+        if not self.filtered_articles:
+            return "break"  # No articles to navigate
+        
+        # Set selection if not already set
+        if self.selected_article_index < 0:
+            self.selected_article_index = 0
+        
+        # Move selection up by 10 items, but not less than 0
+        self.selected_article_index = max(0, self.selected_article_index - 10)
+        
+        # Highlight the selected article
+        self.highlight_selected_article()
+        return "break"
+        
+    def page_down(self, event=None):
+        """Move the selection down by several items"""
+        if not self.filtered_articles:
+            return "break"  # No articles to navigate
+        
+        # Set selection if not already set
+        if self.selected_article_index < 0:
+            self.selected_article_index = 0
+        
+        # Move selection down by 10 items, but not beyond the last item
+        self.selected_article_index = min(len(self.filtered_articles) - 1, self.selected_article_index + 10)
+        
+        # Highlight the selected article
+        self.highlight_selected_article()
+        return "break"
+    
+    def jump_to_first(self, event=None):
+        """Jump to the first article in the list"""
+        if not self.filtered_articles:
+            return "break"  # No articles to navigate
+        
+        # Set selection to the first article
+        self.selected_article_index = 0
+        
+        # Highlight the selected article
+        self.highlight_selected_article()
+        return "break"  # Prevent default handling
+        
+    def jump_to_last(self, event=None):
+        """Jump to the last article in the list"""
+        if not self.filtered_articles:
+            return "break"  # No articles to navigate
+        
+        # Set selection to the last article
+        self.selected_article_index = len(self.filtered_articles) - 1
+        
+        # Highlight the selected article
+        self.highlight_selected_article()
         return "break"  # Prevent default handling
     
     def on_closing(self):
