@@ -516,38 +516,42 @@ class RSSTerminalApp:
                 parsed_feed = feedparser.parse(feed['url'])
                 feed_title = feed['name']  # Use the standardized feed name
                 
-                # Get new items (not seen before)
+                # Initialize last_seen_guids for this feed if it doesn't exist
                 if feed['name'] not in self.last_seen_guids:
                     self.last_seen_guids[feed['name']] = []
                 
                 for entry in parsed_feed.entries:
-                    if hasattr(entry, 'id') and entry.id not in self.last_seen_guids[feed['name']]:
-                        # Parse the publication date
-                        pub_date = self.parse_date(entry)
-                        
-                        # Get headline
-                        title = entry.title if hasattr(entry, 'title') else "No title"
-                        
-                        # Check for duplicate headlines
-                        if title in seen_headlines:
-                            # Skip this duplicate headline but still mark it as seen
+                    # Parse the publication date
+                    pub_date = self.parse_date(entry)
+                    
+                    # Get headline
+                    title = entry.title if hasattr(entry, 'title') else "No title"
+                    
+                    # Check for duplicate headlines
+                    if title in seen_headlines:
+                        # Skip this duplicate headline but still mark it as seen if it's new
+                        if hasattr(entry, 'id') and entry.id not in self.last_seen_guids[feed['name']]:
                             self.last_seen_guids[feed['name']].append(entry.id)
-                            continue
-                            
-                        # Add this headline to seen set
-                        seen_headlines.add(title)
+                        continue
                         
-                        # Add to new articles
-                        new_articles.append({
-                            'title': title,
-                            'pub_date': pub_date,
-                            'pub_date_str': self.get_formatted_time(pub_date),
-                            'link': entry.link if hasattr(entry, 'link') else "",
-                            'source': feed_title,
-                            'is_new': True  # Mark as new for highlighting
-                        })
-                        
-                        # Mark as seen
+                    # Add this headline to seen set
+                    seen_headlines.add(title)
+                    
+                    # Determine if this is a new article (not seen before)
+                    is_new = hasattr(entry, 'id') and entry.id not in self.last_seen_guids[feed['name']]
+                    
+                    # Add to articles list
+                    new_articles.append({
+                        'title': title,
+                        'pub_date': pub_date,
+                        'pub_date_str': self.get_formatted_time(pub_date),
+                        'link': entry.link if hasattr(entry, 'link') else "",
+                        'source': feed_title,
+                        'is_new': is_new  # Mark as new for highlighting if it's new
+                    })
+                    
+                    # Mark as seen if it's new
+                    if is_new and hasattr(entry, 'id'):
                         self.last_seen_guids[feed['name']].append(entry.id)
             
             except Exception as e:
