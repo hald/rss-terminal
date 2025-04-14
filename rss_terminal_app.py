@@ -792,7 +792,7 @@ class RSSTerminalApp:
         return "break"
         
     def show_article_description(self, event=None):
-        """Show description for the selected article"""
+        """Show description for the selected article in Bloomberg terminal style"""
         if not self.filtered_articles or self.selected_article_index < 0:
             self.update_status("No article selected")
             return "break"
@@ -801,30 +801,175 @@ class RSSTerminalApp:
         
         # Create a popup window for description
         desc_window = tk.Toplevel(self.root)
-        desc_window.title(f"Article Description - {article['source']}")
+        desc_window.title(f"{article['source']} - Article Detail")
         desc_window.configure(bg=self.colors['bg'])
         
         # Set window size and position relative to main window
-        window_width = 600
-        window_height = 400
+        window_width = 700
+        window_height = 500
         x = self.root.winfo_x() + (self.root.winfo_width() - window_width) // 2
         y = self.root.winfo_y() + (self.root.winfo_height() - window_height) // 2
         desc_window.geometry(f'{window_width}x{window_height}+{x}+{y}')
         
-        # Add article title
-        title_frame = tk.Frame(desc_window, bg=self.colors['header_bg'])
-        title_frame.pack(fill=tk.X, padx=0, pady=0)
+        # Bloomberg-style top header bar in blue
+        header_frame = tk.Frame(desc_window, bg=self.colors['header_bg'], height=30)
+        header_frame.pack(fill=tk.X, padx=0, pady=0)
         
-        title_label = tk.Label(title_frame, text=article['title'], 
-                              font=self.header_font, bg=self.colors['header_bg'],
-                              fg=self.colors['text'], anchor='w', padx=10, pady=5)
-        title_label.pack(fill=tk.X, expand=True)
+        # Header with article number and source identifier
+        header_label = tk.Label(
+            header_frame, 
+            text=f"{self.selected_article_index + 1}) {article['source']} ARTICLE DETAIL",
+            font=self.header_font, 
+            bg=self.colors['header_bg'],
+            fg=self.colors['text'], 
+            anchor='w', 
+            padx=10, 
+            pady=5
+        )
+        header_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
         
-        # Add description text area
-        desc_text = scrolledtext.ScrolledText(desc_window, bg=self.colors['bg'], 
-                                            fg=self.colors['text'], font=self.terminal_font,
-                                            wrap=tk.WORD, padx=10, pady=10)
-        desc_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        # Current time on the right side of header
+        current_time_str = self.get_formatted_time()  # Use the same time formatting function as the main view
+        
+        date_label = tk.Label(
+            header_frame,
+            text=current_time_str,
+            font=self.header_font,
+            bg=self.colors['header_bg'],
+            fg=self.colors['yellow'],
+            padx=10,
+            pady=5
+        )
+        date_label.pack(side=tk.RIGHT)
+        
+        # Main content area with metadata and description
+        content_frame = tk.Frame(desc_window, bg=self.colors['bg'])
+        content_frame.pack(fill=tk.BOTH, expand=True, padx=0, pady=0)
+        
+        # Article title section with orange headline color
+        title_frame = tk.Frame(content_frame, bg=self.colors['bg'], padx=10, pady=5)
+        title_frame.pack(fill=tk.X)
+        
+        title_label = tk.Label(
+            title_frame, 
+            text=article['title'],
+            font=self.header_font, 
+            bg=self.colors['bg'],
+            fg=self.colors['highlight'],  # Orange highlight color
+            anchor='w',
+            wraplength=window_width-40,
+            justify='left'
+        )
+        title_label.pack(fill=tk.X)
+        
+        # Article metadata section
+        metadata_frame = tk.Frame(content_frame, bg='#111111', padx=10, pady=10)
+        metadata_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        # Source info
+        source_label = tk.Label(
+            metadata_frame,
+            text="SOURCE:",
+            font=self.terminal_font,
+            bg='#111111',
+            fg=self.colors['blue'],
+            anchor='w',
+            width=15
+        )
+        source_label.grid(row=0, column=0, sticky='w', pady=2)
+        
+        source_value = tk.Label(
+            metadata_frame,
+            text=article['source'],
+            font=self.terminal_font,
+            bg='#111111',
+            fg=self.colors['source'],
+            anchor='w'
+        )
+        source_value.grid(row=0, column=1, sticky='w', pady=2)
+        
+        # Publication date info - using the same format as in the main list
+        pubdate_label = tk.Label(
+            metadata_frame,
+            text="PUBLISH TIME:",
+            font=self.terminal_font,
+            bg='#111111',
+            fg=self.colors['blue'],
+            anchor='w',
+            width=15
+        )
+        pubdate_label.grid(row=1, column=0, sticky='w', pady=2)
+        
+        # Use the same formatted time that's displayed in the main list view
+        pubdate_value = tk.Label(
+            metadata_frame,
+            text=article['pub_date_str'],  # Using the pre-formatted time string from the article
+            font=self.terminal_font,
+            bg='#111111',
+            fg=self.colors['yellow'],
+            anchor='w'
+        )
+        pubdate_value.grid(row=1, column=1, sticky='w', pady=2)
+        
+        # Article link
+        link_label = tk.Label(
+            metadata_frame,
+            text="ARTICLE URL:",
+            font=self.terminal_font,
+            bg='#111111',
+            fg=self.colors['blue'],
+            anchor='w',
+            width=15
+        )
+        link_label.grid(row=2, column=0, sticky='w', pady=2)
+        
+        # Truncate link if too long
+        link_text = article['link']
+        if len(link_text) > 50:
+            link_text = link_text[:47] + "..."
+            
+        link_value = tk.Label(
+            metadata_frame,
+            text=link_text,
+            font=self.terminal_font,
+            bg='#111111',
+            fg=self.colors['green'],
+            anchor='w',
+            cursor="hand2"
+        )
+        link_value.grid(row=2, column=1, sticky='w', pady=2)
+        link_value.bind("<Button-1>", lambda e: webbrowser.open(article['link']))
+        
+        # Divider line
+        divider = tk.Frame(content_frame, bg=self.colors['header_bg'], height=2)
+        divider.pack(fill=tk.X, padx=10, pady=5)
+        
+        # Article content label
+        content_label = tk.Label(
+            content_frame,
+            text="ARTICLE CONTENT",
+            font=self.header_font,
+            bg=self.colors['bg'],
+            fg=self.colors['blue'],
+            anchor='w',
+            padx=10,
+            pady=5
+        )
+        content_label.pack(fill=tk.X)
+        
+        # Description text area with terminal-like styling
+        desc_text = scrolledtext.ScrolledText(
+            content_frame, 
+            bg='#0a0a0a', 
+            fg=self.colors['text'], 
+            font=self.terminal_font,
+            wrap=tk.WORD, 
+            padx=15, 
+            pady=15,
+            borderwidth=0,
+            highlightthickness=0
+        )
+        desc_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
         
         # Get description if available, otherwise show placeholder
         description = "No description available for this article."
@@ -834,21 +979,57 @@ class RSSTerminalApp:
         desc_text.insert(tk.END, description)
         desc_text.config(state=tk.DISABLED)  # Make read-only
         
-        # Add close button
-        button_frame = tk.Frame(desc_window, bg=self.colors['bg'])
-        button_frame.pack(fill=tk.X, padx=10, pady=10)
+        # Status bar at bottom
+        status_frame = tk.Frame(desc_window, bg='#333333', height=22)
+        status_frame.pack(fill=tk.X, side=tk.BOTTOM, padx=0, pady=0)
         
-        close_button = tk.Button(button_frame, text="Close", command=desc_window.destroy,
-                                bg='#333333', fg=self.colors['text'],
-                                activebackground='#555555', activeforeground=self.colors['text'])
-        close_button.pack(side=tk.RIGHT)
+        # Action buttons in status bar
+        open_button = tk.Button(
+            status_frame, 
+            text="OPEN [O]", 
+            command=lambda: webbrowser.open(article['link']),
+            bg='#333333', 
+            fg=self.colors['yellow'],
+            activebackground='#444444', 
+            activeforeground=self.colors['text'],
+            borderwidth=0,
+            padx=10
+        )
+        open_button.pack(side=tk.LEFT, padx=5, pady=2)
         
-        # Bind Escape to close the window
+        close_button = tk.Button(
+            status_frame, 
+            text="CLOSE [ESC]", 
+            command=desc_window.destroy,
+            bg='#333333', 
+            fg=self.colors['text'],
+            activebackground='#444444', 
+            activeforeground=self.colors['text'],
+            borderwidth=0,
+            padx=10
+        )
+        close_button.pack(side=tk.LEFT, padx=5, pady=2)
+        
+        # Keyboard shortcuts info
+        shortcuts_label = tk.Label(
+            status_frame,
+            text="O: Open in Browser | ESC: Close | SPACE: Scroll Down",
+            font=self.terminal_font, 
+            bg='#333333', 
+            fg='#AAAAAA', 
+            anchor='e'
+        )
+        shortcuts_label.pack(side=tk.RIGHT, padx=10)
+        
+        # Add keyboard shortcuts
         desc_window.bind("<Escape>", lambda e: desc_window.destroy())
+        desc_window.bind("o", lambda e: webbrowser.open(article['link']))
+        desc_window.bind("O", lambda e: webbrowser.open(article['link']))
         
         # Make the window modal
         desc_window.transient(self.root)
         desc_window.grab_set()
+        desc_window.focus_set()
         
         return "break"
         
