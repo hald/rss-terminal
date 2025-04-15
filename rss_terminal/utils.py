@@ -147,7 +147,7 @@ def get_weather_icon(weather_data):
     
     return icon  # Return default icon if nothing else matches
 
-def truncate_headline(headline, max_length=90):
+def truncate_headline(headline, max_length=80):
     """Truncate headline if it's too long"""
     if len(headline) > max_length:
         return headline[:max_length] + "..."
