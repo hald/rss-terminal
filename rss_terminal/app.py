@@ -39,6 +39,9 @@ class RSSTerminalApp:
         
         # Schedule initial feed fetch
         self.root.after(1000, self.feed_manager.initial_fetch)
+        
+        # Start background thread for periodic fetching
+        self.feed_manager.start_fetching(self.ui.handle_feed_update)
     
     def on_closing(self):
         """Cleanup when closing the application"""
