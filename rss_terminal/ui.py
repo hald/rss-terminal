@@ -8,7 +8,7 @@ from tkinter import font, scrolledtext
 import datetime as dt
 import threading
 
-from rss_terminal.utils import get_formatted_time, truncate_headline, html_to_text, get_weather_data
+from rss_terminal.utils import get_formatted_time, truncate_headline, html_to_text, get_weather_data, get_weather_icon
 
 class TerminalUI:
     """Manages the UI components for the RSS Terminal"""
@@ -885,9 +885,12 @@ class TerminalUI:
         self.root.after(self.config.weather_update_interval * 1000, self.fetch_weather)
     
     def update_weather_display(self, weather):
-        """Update the weather display with current temperature"""
+        """Update the weather display with current temperature and weather icon"""
         temp_f = weather['temp_f']
         temp_color = self.colors['green']
+        
+        # Get weather icon based on conditions
+        weather_icon = get_weather_icon(weather)
         
         # Change color based on temperature - adjusted for Tucson's desert climate
         if temp_f > 105:
@@ -901,8 +904,8 @@ class TerminalUI:
         else:
             temp_color = "#9370DB"  # Cold for Tucson (<60°F) - use purple
         
-        # Format the display: airport code and temperature
+        # Format the display: weather icon, airport code, and temperature
         self.weather_display.config(
-            text=f"{weather['airport']} {temp_f}°F",
+            text=f"{weather_icon} {weather['airport']} {temp_f}°F",
             fg=temp_color
         )

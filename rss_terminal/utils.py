@@ -60,17 +60,92 @@ def get_weather_data(airport_code):
                 if temp_c is not None:
                     # Convert Celsius to Fahrenheit
                     temp_f = (temp_c * 9/5) + 32
+                    
+                    # Extract additional weather information
+                    clouds = weather.get('clouds', [])
+                    cloud_condition = clouds[0].get('cover') if clouds else "CLR"
+                    
+                    # Weather strings like "RA" (rain), "SN" (snow), etc.
+                    wx_string = weather.get('wxString')
+                    
+                    # Wind info
+                    wind_speed = weather.get('wspd')
+                    wind_gust = weather.get('wgst')
+                    wind_dir = weather.get('wdir')
+                    
+                    # Visibility
+                    visibility = weather.get('visib')
+                    
                     return {
                         'temp_c': round(temp_c, 1),
                         'temp_f': round(temp_f, 1),
                         'airport': airport_code,
-                        'last_updated': weather.get('reportTime')
+                        'last_updated': weather.get('reportTime'),
+                        'cloud_condition': cloud_condition,
+                        'wx_string': wx_string,
+                        'wind_speed': wind_speed,
+                        'wind_gust': wind_gust,
+                        'wind_dir': wind_dir,
+                        'visibility': visibility,
+                        'raw_metar': weather.get('rawOb')
                     }
         
         return None
     except Exception as e:
         print(f"Error fetching weather: {e}")
         return None
+
+def get_weather_icon(weather_data):
+    """Determine appropriate weather icon based on METAR data"""
+    if not weather_data:
+        return "?"
+        
+    cloud_condition = weather_data.get('cloud_condition', '')
+    wx_string = weather_data.get('wx_string', '')
+    
+    # Default icon for clear conditions
+    icon = "☀️"  # Sun
+    
+    # Weather phenomena take precedence over cloud cover
+    if wx_string:
+        wx_lower = wx_string.lower()
+        
+        # Thunderstorms
+        if 'ts' in wx_lower:
+            return "⚡"  # Lightning
+        
+        # Rain
+        if 'ra' in wx_lower or 'dz' in wx_lower:
+            if 'sh' in wx_lower:  # Showers
+                return "🌦️"  # Sun behind rain cloud
+            return "🌧️"  # Rain cloud
+        
+        # Snow
+        if 'sn' in wx_lower:
+            return "❄️"  # Snowflake
+        
+        # Fog
+        if 'fg' in wx_lower or 'br' in wx_lower:
+            return "🌫️"  # Fog
+        
+        # Dust or sand
+        if 'du' in wx_lower or 'sa' in wx_lower or 'hz' in wx_lower:
+            return "💨"  # Wind
+    
+    # Cloud cover based icons (if no specific weather phenomena)
+    if cloud_condition:
+        if cloud_condition == 'SKC' or cloud_condition == 'CLR' or cloud_condition == 'NCD':
+            return "☀️"  # Sun (Clear)
+        elif cloud_condition == 'FEW':
+            return "🌤️"  # Sun behind small cloud
+        elif cloud_condition == 'SCT':
+            return "⛅"  # Sun behind cloud
+        elif cloud_condition == 'BKN':
+            return "🌥️"  # Sun behind large cloud
+        elif cloud_condition == 'OVC' or cloud_condition == 'VV':
+            return "☁️"  # Cloud (Overcast)
+    
+    return icon  # Return default icon if nothing else matches
 
 def truncate_headline(headline, max_length=90):
     """Truncate headline if it's too long"""
