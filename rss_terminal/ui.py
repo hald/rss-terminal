@@ -24,6 +24,7 @@ class TerminalUI:
         self.goto_number = ""
         self.new_article_tags = []
         self.weather_data = None
+        self._initial_display_done = False
         
         # Set up the window
         self._setup_window()
@@ -176,7 +177,7 @@ class TerminalUI:
         
         # Add keyboard shortcuts info
         shortcuts_label = tk.Label(self.status_frame,
-                                  text="↑/↓: Navigate | Enter: Open | Tab: Cycle Feeds | F5: Refresh",
+                                  text="↑/↓: Navigate | Enter: Open | Tab: Cycle Feeds | F5: Refresh | Home: Newest",
                                   font=self.terminal_font, bg='#333333', fg='#AAAAAA', anchor='e')
         shortcuts_label.pack(side=tk.RIGHT, padx=10)
     
@@ -192,6 +193,7 @@ class TerminalUI:
         # Additional shortcuts
         self.root.bind("g", self.start_goto_mode)
         self.root.bind("d", self.show_article_description)
+        self.root.bind("<Home>", self.jump_to_newest)
         
         # Page navigation
         self.root.bind("<Command-Up>", self.page_up)
@@ -242,7 +244,8 @@ class TerminalUI:
         self.update_text("  g  : Go to article by number\n", text_style="source")
         self.update_text("  d  : Show description of selected article\n", text_style="source")
         self.update_text("  ⌘+↑/↓ : Page up/down in article list\n", text_style="source")
-        self.update_text("  ⌘+Shift+↑/↓ : Jump to first/last article\n\n", text_style="source")
+        self.update_text("  ⌘+Shift+↑/↓ : Jump to first/last article\n", text_style="source")
+        self.update_text("  Home : Jump to newest articles\n\n", text_style="source")
     
     def update_text(self, text, delay_chars=False, flash=False, text_style=None):
         """Update the text display with the specified style"""
@@ -305,11 +308,47 @@ class TerminalUI:
         # Schedule the next update
         self.root.after(1000, self.update_countdown)
     
-    def display_articles(self):
-        """Display articles based on current filter"""
-        # Reset selection
+    def display_articles(self, maintain_position=False):
+        """Display articles based on current filter with incremental line-by-line updates"""
+        # Store view info if needed
+        if maintain_position and self.content_text.winfo_viewable():
+            # Save exact scroll position 
+            visible_fraction = self.content_text.yview()[0]
+            
+            # Also store the selected article if any
+            selected_article = None
+            if self.selected_article_index >= 0 and self.selected_article_index < len(self.feed_manager.filtered_articles):
+                selected_article = self.feed_manager.filtered_articles[self.selected_article_index]
+        else:
+            visible_fraction = 0
+            selected_article = None
+        
+        # Reset selection state
         self.selected_article_index = -1
         
+        # This is our key for split-flap display effect - either rebuild or update incrementally
+        if not self.content_text.get("1.0", "end-1c") or not maintain_position:
+            # If the text widget is empty or not maintaining position, do a full rebuild
+            self._rebuild_article_display()
+        else:
+            # Otherwise, do an incremental update - this is our split-flap effect
+            self._update_article_display_incrementally()
+        
+        # Restore scroll position if maintaining position
+        if maintain_position and visible_fraction > 0:
+            # Use yview_moveto for precise scroll position restoration
+            self.content_text.yview_moveto(visible_fraction)
+            
+            # Restore selection if previously selected
+            if selected_article:
+                for i, article in enumerate(self.feed_manager.filtered_articles):
+                    if article.get('title') == selected_article.get('title'):
+                        self.selected_article_index = i
+                        self.highlight_selected_article(scroll_to_view=False)
+                        break
+    
+    def _rebuild_article_display(self):
+        """Completely rebuild the article display from scratch"""
         # Clear display
         self.content_text.config(state=tk.NORMAL)
         self.content_text.delete('1.0', tk.END)
@@ -323,68 +362,201 @@ class TerminalUI:
         self.update_text(f"{filter_text} - {len(self.feed_manager.filtered_articles)} Headlines\n", text_style="headline")
         
         # Track if any new articles are displayed
-        self.new_article_tags = []  # Store tags for flashing effect
+        self.new_article_tags = []
         displayed_new_articles = False
         
         # Display each article
         for idx, article in enumerate(self.feed_manager.filtered_articles):
-            # Format row number
-            num_text = f"{idx+1}) "
-            self.update_text(num_text, text_style="number")
+            # Insert the article with proper formatting
+            self._format_and_insert_article(idx, article)
             
-            # Format headline (title) with truncation
-            headline_text = truncate_headline(article['title'])
-            
-            # Check if this is a new article and should be highlighted
+            # Track if this was a new article
             if article.get('is_new', False):
-                # Insert with unique tag for this article to enable flashing
-                tag_name = f"new_headline_{idx}"
-                self.content_text.config(state=tk.NORMAL)
-                position = self.content_text.index(tk.END)
-                self.content_text.insert(tk.END, headline_text, tag_name)
-                self.content_text.tag_configure(tag_name, foreground="#FFFFFF", background="#004400")
-                self.new_article_tags.append(tag_name)
                 displayed_new_articles = True
-            else:
-                self.update_text(headline_text, text_style="headline")
-            
-            # Calculate space needed for right alignment
-            # Get width of the window in characters
-            window_width = self.content_text.winfo_width() // 8  # Approximate char width
-            source_time_width = len(article['source']) + len(article['pub_date_str']) + 2  # +2 for spacing
-            
-            # Ensure we have enough space for source and time
-            min_space = 5
-            
-            # Calculate spaces needed for right alignment
-            spaces_needed = window_width - len(num_text) - len(headline_text) - source_time_width - min_space
-            spaces_needed = max(spaces_needed, min_space)
-            spaces = " " * spaces_needed
-            
-            self.update_text(spaces)
-            
-            # Add source code and time
-            self.update_text(f"{article['source']} ", text_style="source")
-            self.update_text(f"{article['pub_date_str']}\n", text_style="time")
         
-        # If we displayed any new articles, start flashing and schedule them to be "un-highlighted" after a delay
+        # Handle flashing effect for new articles
         if displayed_new_articles:
-            # Start flashing effect for new articles
             self.flash_new_articles(0)
-            # Schedule the reset of is_new flags after 30 seconds
             self.root.after(30000, self.reset_new_article_flags)
     
+    def _update_article_display_incrementally(self):
+        """Update the article display incrementally for the split-flap effect"""
+        # Update the header first
+        self.content_text.config(state=tk.NORMAL)
+        
+        # Update filter information
+        if self.feed_manager.current_filter == "ALL":
+            filter_text = "All Feeds"
+        else:
+            filter_text = f"{self.feed_manager.current_filter} Feed"
+        
+        # Replace just the first line with the updated header
+        self.content_text.delete("1.0", "2.0")
+        self.content_text.insert("1.0", f"{filter_text} - {len(self.feed_manager.filtered_articles)} Headlines\n", "headline")
+        
+        # Get the current content
+        current_content = self.content_text.get("2.0", "end-1c")
+        current_lines = current_content.split('\n')
+        
+        # Track new article tags and flags
+        self.new_article_tags = []
+        displayed_new_articles = False
+        
+        # Prepare for incremental updates
+        line_index = 2  # Start after header (line 1)
+        
+        # Process each article with a visual delay between updates
+        self._incremental_update_with_delay(0, line_index, displayed_new_articles)
+    
+    def _format_and_insert_article(self, idx, article):
+        """Format a single article and insert it into the display"""
+        # Format row number
+        num_text = f"{idx+1}) "
+        self.update_text(num_text, text_style="number")
+        
+        # Format headline (title) with truncation
+        headline_text = truncate_headline(article['title'])
+        
+        # Check if this is a new article and should be highlighted
+        if article.get('is_new', False):
+            # Insert with unique tag for this article to enable flashing
+            tag_name = f"new_headline_{idx}"
+            self.content_text.config(state=tk.NORMAL)
+            self.content_text.insert(tk.END, headline_text, tag_name)
+            self.content_text.tag_configure(tag_name, foreground="#FFFFFF", background="#004400")
+            self.new_article_tags.append(tag_name)
+        else:
+            self.update_text(headline_text, text_style="headline")
+        
+        # Calculate space needed for right alignment
+        window_width = self.content_text.winfo_width() // 8
+        source_time_width = len(article['source']) + len(article['pub_date_str']) + 2
+        
+        # Ensure we have enough space for source and time
+        min_space = 5
+        
+        # Calculate spaces needed for right alignment
+        spaces_needed = window_width - len(num_text) - len(headline_text) - source_time_width - min_space
+        spaces_needed = max(spaces_needed, min_space)
+        spaces = " " * spaces_needed
+        
+        self.update_text(spaces)
+        
+        # Add source code and time
+        self.update_text(f"{article['source']} ", text_style="source")
+        self.update_text(f"{article['pub_date_str']}\n", text_style="time")
+    
+    def _create_formatted_article_line(self, idx, article):
+        """Create a fully formatted line for an article without inserting it"""
+        parts = []
+        
+        # Format row number
+        num_text = f"{idx+1}) "
+        parts.append((num_text, "number"))
+        
+        # Format headline with truncation
+        headline_text = truncate_headline(article['title'])
+        
+        # Check if this is a new article
+        if article.get('is_new', False):
+            tag_name = f"new_headline_{idx}"
+            parts.append((headline_text, tag_name))
+        else:
+            parts.append((headline_text, "headline"))
+        
+        # Calculate space needed for right alignment
+        window_width = self.content_text.winfo_width() // 8
+        source_time_width = len(article['source']) + len(article['pub_date_str']) + 2
+        
+        # Ensure enough space
+        min_space = 5
+        spaces_needed = window_width - len(num_text) - len(headline_text) - source_time_width - min_space
+        spaces_needed = max(spaces_needed, min_space)
+        spaces = " " * spaces_needed
+        
+        parts.append((spaces, None))
+        
+        # Add source and time
+        parts.append((f"{article['source']} ", "source"))
+        parts.append((f"{article['pub_date_str']}", "time"))
+        
+        return parts
+    
+    def _incremental_update_with_delay(self, article_idx, line_idx, any_new_articles):
+        """Update articles one by one with a visual delay between updates"""
+        # Base case - we've gone through all articles
+        if article_idx >= len(self.feed_manager.filtered_articles):
+            # Remove any remaining lines 
+            self.content_text.config(state=tk.NORMAL)
+            self.content_text.delete(f"{line_idx}.0", "end")
+            self.content_text.config(state=tk.DISABLED)
+            
+            # Start flashing effect if any new articles
+            if any_new_articles:
+                self.flash_new_articles(0)
+                self.root.after(30000, self.reset_new_article_flags)
+            return
+        
+        # Get the current article
+        article = self.feed_manager.filtered_articles[article_idx]
+        
+        # Update if this is a new article
+        new_article = article.get('is_new', False)
+        if new_article:
+            any_new_articles = True
+        
+        # Create the formatted line
+        parts = self._create_formatted_article_line(article_idx, article)
+        
+        # Update the line with a visual flicker effect
+        self.content_text.config(state=tk.NORMAL)
+        
+        # Check if the line exists already - if so, delete it before inserting new content
+        try:
+            # Delete from beginning of line to beginning of next line (including newline)
+            self.content_text.delete(f"{line_idx}.0", f"{line_idx+1}.0")
+        except:
+            # Line doesn't exist, which is fine for append operations
+            pass
+            
+        # Insert at the specific line position (not at END)
+        position = f"{line_idx}.0"
+        
+        # Insert the new line parts with their tags
+        for text, tag in parts:
+            if tag:
+                if tag.startswith("new_headline_"):
+                    self.new_article_tags.append(tag)
+                    self.content_text.insert(position, text, tag)
+                    self.content_text.tag_configure(tag, foreground="#FFFFFF", background="#004400")
+                else:
+                    self.content_text.insert(position, text, tag)
+            else:
+                self.content_text.insert(position, text)
+            
+            # Update the position for the next insert
+            position = self.content_text.index(f"{position}+{len(text)}c")
+        
+        # Add newline
+        self.content_text.insert(position, "\n")
+        
+        self.content_text.config(state=tk.DISABLED)
+        
+        # Schedule the next article update with a small delay for visual effect
+        delay = 5 if new_article else 2  # Pause slightly longer on new articles
+        self.root.after(delay, lambda: self._incremental_update_with_delay(article_idx + 1, line_idx + 1, any_new_articles))
+    
     def flash_new_articles(self, step):
-        """Create a flashing effect for new articles"""
+        """Create a flashing effect for new articles with improved visibility"""
         if not hasattr(self, 'new_article_tags') or not self.new_article_tags:
             return  # No new articles to flash
             
-        # Colors for flashing effect (alternating between darker and lighter green)
+        # Colors for flashing effect
         colors = [
             {"fg": "#FFFFFF", "bg": "#004400"},  # Dark green
             {"fg": "#FFFFFF", "bg": "#006600"},  # Medium green
             {"fg": "#FFFFFF", "bg": "#008800"},  # Light green
-            {"fg": "#FFFFFF", "bg": "#006600"}   # Medium green (transitioning back to dark)
+            {"fg": "#FFFFFF", "bg": "#006600"}   # Medium green (transitioning back)
         ]
         
         # Get the current color based on step
@@ -394,13 +566,35 @@ class TerminalUI:
         for tag in self.new_article_tags:
             self.content_text.tag_configure(tag, foreground=color["fg"], background=color["bg"])
         
-        # Schedule next flash with next color (every 400ms)
-        self.root.after(400, lambda: self.flash_new_articles((step + 1) % len(colors)))
+        # Schedule next flash with next color (faster transition for more dynamic effect)
+        self.root.after(150, lambda: self.flash_new_articles((step + 1) % len(colors)))
     
     def reset_new_article_flags(self):
-        """Reset the is_new flag on all articles and refresh the display"""
-        self.feed_manager.reset_new_article_flags()
-        self.display_articles()
+        """Reset the is_new flag on all articles and ensure proper tag handling"""
+        # For each flashing tag, properly convert it to regular headline tag
+        for tag_name in self.new_article_tags:
+            # First find all ranges where this tag is applied
+            ranges = self.content_text.tag_ranges(tag_name)
+            
+            # Process each start-end range pair
+            for i in range(0, len(ranges), 2):
+                if i+1 < len(ranges):  # Ensure we have both start and end
+                    start = ranges[i]
+                    end = ranges[i+1]
+                    
+                    # Remove the flashing tag
+                    self.content_text.tag_remove(tag_name, start, end)
+                    
+                    # Apply the regular headline tag
+                    self.content_text.tag_add("headline", start, end)
+        
+        # Reset the flags in the article data
+        for article in self.feed_manager.articles:
+            if article.get('is_new', False):
+                article['is_new'] = False
+        
+        # Clear the new article tags list
+        self.new_article_tags = []
     
     def set_filter(self, feed_name):
         """Set the current feed filter and refresh display"""
@@ -445,7 +639,7 @@ class TerminalUI:
         self.highlight_selected_article()
         return "break"  # Prevent default handling
 
-    def highlight_selected_article(self):
+    def highlight_selected_article(self, scroll_to_view=True):
         """Highlight the currently selected article"""
         if not self.feed_manager.filtered_articles:
             return  # No articles to highlight
@@ -462,8 +656,9 @@ class TerminalUI:
         
         self.content_text.tag_add("selected", line_start, line_end)
         
-        # Ensure the selected line is visible
-        self.content_text.see(line_start)
+        # Ensure the selected line is visible if requested
+        if scroll_to_view:
+            self.content_text.see(line_start)
         
         # Update status with selected article info
         article = self.feed_manager.filtered_articles[self.selected_article_index]
@@ -610,6 +805,43 @@ class TerminalUI:
         
         # Highlight the selected article
         self.highlight_selected_article()
+        return "break"  # Prevent default handling
+        
+    def jump_to_newest(self, event=None):
+        """Jump to newest articles (top of list)"""
+        if not self.feed_manager.filtered_articles:
+            return "break"  # No articles to navigate to
+        
+        # Set selection to the newest article (first in the list)
+        self.selected_article_index = 0
+        
+        # Highlight the selected article
+        self.highlight_selected_article()
+        
+        # Scroll to show the newest articles
+        self.content_text.see("2.0")  # First article after header
+        
+        # Remove the new content indicator if it exists
+        try:
+            self.content_text.tag_remove("new_content_indicator", "1.0", "1.end")
+            
+            # Restore normal header format
+            if self.feed_manager.current_filter == "ALL":
+                filter_text = "All Feeds"
+            else:
+                filter_text = f"{self.feed_manager.current_filter} Feed"
+            
+            self.content_text.config(state=tk.NORMAL)
+            self.content_text.delete("1.0", "1.end")
+            self.content_text.insert("1.0", f"{filter_text} - {len(self.feed_manager.filtered_articles)} Headlines", "headline")
+            self.content_text.config(state=tk.DISABLED)
+        except:
+            # If no indicator exists, just continue
+            pass
+        
+        # Update status
+        self.update_status("Showing newest headlines")
+        
         return "break"  # Prevent default handling
     
     def show_article_description(self, event=None):
@@ -852,7 +1084,7 @@ class TerminalUI:
         return "break"
 
     def handle_feed_update(self, new_articles, error=False):
-        """Handle feed update completion or error"""
+        """Handle feed update completion or error with true split-flap display style"""
         if error and isinstance(new_articles, str):
             # Handle error message
             self.update_status(new_articles)
@@ -860,11 +1092,83 @@ class TerminalUI:
         
         # Update the display with new articles
         if new_articles:
-            self.update_status(f"Updated with {len(new_articles)} new articles. Total: {len(self.feed_manager.articles)}")
-            self.display_articles()
+            # Count how many new articles match the current filter
+            new_for_current_filter = 0
+            for article in new_articles:
+                if self.feed_manager.current_filter == "ALL" or article['source'] == self.feed_manager.current_filter:
+                    new_for_current_filter += 1
+            
+            # Update status to show new article count
+            if new_for_current_filter > 0:
+                self.update_status(f"{new_for_current_filter} new headlines added | Total: {len(self.feed_manager.articles)}")
+            else:
+                self.update_status(f"Updated with {len(new_articles)} articles (none in current filter) | Total: {len(self.feed_manager.articles)}")
+            
+            # Determine if this is the initial display or an update
+            if not self._initial_display_done:
+                # For initial display, use regular display method and make sure we're at the top
+                self.display_articles(maintain_position=False)
+                # Explicitly scroll to top of the list after initial load
+                self.root.after(100, lambda: self.content_text.see("1.0"))
+                self._initial_display_done = True
+            else:
+                # For updates, ALWAYS maintain position (split-flap style)
+                # This ensures the view doesn't jump when new content arrives
+                
+                # Instead of rebuilding the entire display, we could implement an insert-only approach
+                # However, for consistency and to handle filter changes properly, we're using 
+                # our improved position maintenance approach
+                self.display_articles(maintain_position=True)
+                
+                # If new articles were added to the current filter, show notification
+                if new_for_current_filter > 0:
+                    self._show_new_content_indicator(new_for_current_filter)
         else:
             self.update_status(f"No new updates | Last check: {dt.datetime.now().strftime('%H:%M:%S')}")
     
+    def _show_new_content_indicator(self, new_count):
+        """Show an indicator that new content is available without scrolling"""
+        # Find the filter information text at the top
+        filter_info_line = "1.0"
+        
+        # Check if we can find the filter info text
+        try:
+            self.content_text.tag_add("new_content_indicator", filter_info_line, "1.end")
+            self.content_text.tag_configure("new_content_indicator", foreground=self.colors['red'])
+            
+            # Get current filter text
+            if self.feed_manager.current_filter == "ALL":
+                filter_text = "All Feeds"
+            else:
+                filter_text = f"{self.feed_manager.current_filter} Feed"
+            
+            # Update the header text with new article count
+            self.content_text.config(state=tk.NORMAL)
+            self.content_text.delete("1.0", "1.end")
+            self.content_text.insert("1.0", f"{filter_text} - {len(self.feed_manager.filtered_articles)} Headlines (↑ {new_count} NEW ↑)", "new_content_indicator")
+            self.content_text.config(state=tk.DISABLED)
+            
+            # Flash the indicator a few times
+            self._flash_indicator(0)
+        except:
+            # If we couldn't find the line, just continue without indicator
+            pass
+    
+    def _flash_indicator(self, count):
+        """Flash the new content indicator a few times"""
+        if count >= 6:  # Stop after 3 flashes (6 color changes)
+            self.content_text.tag_configure("new_content_indicator", foreground=self.colors['red'])
+            return
+        
+        # Toggle between colors
+        if count % 2 == 0:
+            self.content_text.tag_configure("new_content_indicator", foreground=self.colors['yellow'])
+        else:
+            self.content_text.tag_configure("new_content_indicator", foreground=self.colors['red'])
+        
+        # Schedule next flash
+        self.root.after(300, lambda: self._flash_indicator(count + 1))
+            
     def fetch_weather(self):
         """Fetch weather data from the API in a separate thread"""
         def _fetch():

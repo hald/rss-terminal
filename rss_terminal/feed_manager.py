@@ -105,11 +105,11 @@ class FeedManager:
         
         # If we have new articles, add them to our list
         if new_articles:
-            # Sort all articles by publication date
-            new_articles.sort(key=lambda x: x['pub_date'])
+            # Sort new articles by publication date (newest first)
+            new_articles.sort(key=lambda x: x['pub_date'], reverse=True)
             
-            # Add to our master list and save the updated last seen GUIDs
-            self.articles.extend(new_articles)
+            # Add to the beginning of our master list (newest first approach)
+            self.articles = new_articles + self.articles
             self.config.save_last_seen()
             
         # Clean up old articles if needed
@@ -137,11 +137,8 @@ class FeedManager:
         # Maximum count limit - keep at most 1000 articles
         max_articles = 1000
         if len(self.articles) > max_articles:
-            # Sort by date (newest first) and keep only the newest max_articles
-            self.articles.sort(key=lambda x: x['pub_date'], reverse=True)
+            # Keep only the newest max_articles (since they're already sorted newest first)
             self.articles = self.articles[:max_articles]
-            # Re-sort to put newest at the bottom
-            self.articles.sort(key=lambda x: x['pub_date'])
         
         # Return true if any articles were removed
         return len(self.articles) < orig_count
