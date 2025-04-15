@@ -1,10 +1,10 @@
-# Bloomberg-Style Financial News Terminal
+# Terminal-Style Financial News Terminal
 
-A Python application that displays RSS feeds in a Bloomberg terminal-inspired interface. This app provides a nostalgic and professional financial news experience with real-time updates from various sources.
+A Python application that displays RSS feeds in a terminal-inspired interface. This app provides a nostalgic and professional financial news experience with real-time updates from various sources.
 
 ## Features
 
-- Authentic Bloomberg terminal UI aesthetic
+- Authentic retro terminal UI aesthetic
 - Sections for "Top Ranked News" and "Time Ordered News"
 - Clickable headlines that open articles in your web browser
 - Automatic feed refreshing with countdown timer
@@ -26,41 +26,44 @@ A Python application that displays RSS feeds in a Bloomberg terminal-inspired in
 ### Install Dependencies
 
 ```bash
-pip install feedparser pytz python-dateutil
+pip install -r requirements.txt
 ```
 
 ## Usage
 
-1. Edit the `terminal_config.ini` file to add your preferred RSS feeds and set the refresh interval
+1. Edit the `rss_config.ini` file to add your preferred RSS feeds and set the refresh interval
 2. Run the application:
 
 ```bash
-python bloomberg_terminal.py
+python main.py
 ```
 
-3. Click on any headline to open the article in your default web browser
+3. Click on any headline to view article details or open in your default web browser
 
 ## Configuration
 
-The application uses a configuration file named `terminal_config.ini` to store settings:
+The application uses a configuration file named `rss_config.ini` to store settings:
 
 ```ini
 [Settings]
 refresh_interval = 300  # Refresh interval in seconds
-timezone = America/Los_Angeles  # Standard timezone name
+timezone = America/Phoenix  # Standard timezone name
+airport_code = KTUS  # For weather information
+weather_update_interval = 900  # Weather refresh interval in seconds
 
 [Feeds]
 # Format: SOURCECODE = feed_url
-BBGMKT = https://www.bloomberg.com/feed/markets/sitemap_index.xml
-RTRSFI = https://www.reutersagency.com/feed/
-BFW = https://www.nasdaq.com/feed/rssoutbound?category=Business+Wire
+BN_POLT = https://feeds.bloomberg.com/politics/news.rss
+TCHMEME = https://www.techmeme.com/feed.xml
+WSJ_TCH = https://feeds.content.dowjones.io/public/rss/RSSWSJD
 ```
 
-Source codes are displayed next to headlines in the terminal interface. For an authentic Bloomberg look, use 3-6 character source codes.
+Source codes are displayed next to headlines in the terminal interface. For an authentic terminal look, use 3-6 character source codes.
 
 ### Timezone Configuration
 
 The application uses standard timezone names. Some common examples:
+- `America/Phoenix` (US Mountain, GMT-7)
 - `America/Los_Angeles` (US Pacific, GMT-7/8)
 - `America/New_York` (US Eastern, GMT-4/5)
 - `Europe/London` (UK, GMT/BST)
@@ -68,7 +71,7 @@ The application uses standard timezone names. Some common examples:
 
 ## Interface Elements
 
-The application mimics the key elements of a Bloomberg terminal:
+The application mimics the key elements of a news terminal:
 
 - Top navigation menu with dropdown
 - Securities ticker bar
@@ -77,12 +80,20 @@ The application mimics the key elements of a Bloomberg terminal:
 - Status bar with function indicators
 - Dense, information-rich layout
 
-Headlines are displayed in chronological order with a numbering system, source code, and timestamp. Clicking any headline opens the full article in your web browser.
+Headlines are displayed in chronological order with a numbering system, source code, and timestamp. Clicking any headline opens the article details.
 
 ## Keyboard Shortcuts
 
-- F2: Manual refresh of all feeds
+- ↑/↓ : Navigate between headlines
+- Enter/Space : Open selected article in browser
+- ESC : Unselect current article
+- Tab/Shift+Tab : Cycle between feeds
+- F5 : Refresh all feeds
+- g : Go to article by number
+- d : Show description of selected article
+- ⌘+↑/↓ : Page up/down in article list
+- ⌘+Shift+↑/↓ : Jump to first/last article
 
 ## About
 
-This application is inspired by the Bloomberg Professional Terminal, providing a nostalgic way to consume news feeds in a professional financial interface.
+This application is inspired by the Bloomberg Terminal, Prodigy, and the old Associated Press printer in many newsrooms.
