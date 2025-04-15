@@ -6,8 +6,9 @@ import time
 import webbrowser
 from tkinter import font, scrolledtext
 import datetime as dt
+import threading
 
-from rss_terminal.utils import get_formatted_time, truncate_headline, html_to_text
+from rss_terminal.utils import get_formatted_time, truncate_headline, html_to_text, get_weather_data
 
 class TerminalUI:
     """Manages the UI components for the RSS Terminal"""
@@ -22,6 +23,7 @@ class TerminalUI:
         self.goto_mode = False
         self.goto_number = ""
         self.new_article_tags = []
+        self.weather_data = None
         
         # Set up the window
         self._setup_window()
@@ -35,6 +37,9 @@ class TerminalUI:
         
         # Show the startup sequence
         self.show_startup_sequence()
+        
+        # Start weather update
+        self.fetch_weather()
     
     def _setup_window(self):
         """Configure the main window"""
@@ -122,10 +127,15 @@ class TerminalUI:
             feed_filter.pack(side=tk.LEFT, padx=2)
             feed_filter.bind("<Button-1>", lambda e, name=feed['name']: self.set_filter(name))
         
-        # Right side information - time display
+        # Right side information - weather display and time
+        self.weather_display = tk.Label(self.filter_frame, text="", 
+                              font=self.header_font, bg=self.colors['bg'], fg=self.colors['green'])
+        self.weather_display.pack(side=tk.RIGHT, padx=5)
+        
+        # Time display
         self.time_display = tk.Label(self.filter_frame, text=get_formatted_time(timezone=self.config.timezone), 
                               font=self.header_font, bg=self.colors['bg'], fg=self.colors['yellow'])
-        self.time_display.pack(side=tk.RIGHT, padx=10)
+        self.time_display.pack(side=tk.RIGHT, padx=5)
         
         # Update time every second
         def update_time():
@@ -854,3 +864,45 @@ class TerminalUI:
             self.display_articles()
         else:
             self.update_status(f"No new updates | Last check: {dt.datetime.now().strftime('%H:%M:%S')}")
+    
+    def fetch_weather(self):
+        """Fetch weather data from the API in a separate thread"""
+        def _fetch():
+            try:
+                weather = get_weather_data(self.config.airport_code)
+                if weather:
+                    # Update UI from the main thread
+                    self.root.after(0, lambda: self.update_weather_display(weather))
+            except Exception as e:
+                print(f"Weather update error: {e}")
+        
+        # Start the weather fetching in a separate thread
+        thread = threading.Thread(target=_fetch)
+        thread.daemon = True
+        thread.start()
+        
+        # Schedule next weather update based on config (convert seconds to milliseconds)
+        self.root.after(self.config.weather_update_interval * 1000, self.fetch_weather)
+    
+    def update_weather_display(self, weather):
+        """Update the weather display with current temperature"""
+        temp_f = weather['temp_f']
+        temp_color = self.colors['green']
+        
+        # Change color based on temperature - adjusted for Tucson's desert climate
+        if temp_f > 105:
+            temp_color = self.colors['red']  # Very hot (>105°F)
+        elif temp_f > 95:
+            temp_color = self.colors['yellow']  # Hot (95-105°F)
+        elif temp_f > 80:
+            temp_color = self.colors['green']  # Warm/pleasant (80-95°F)
+        elif temp_f > 60:
+            temp_color = self.colors['blue']  # Cool (60-80°F)
+        else:
+            temp_color = "#9370DB"  # Cold for Tucson (<60°F) - use purple
+        
+        # Format the display: airport code and temperature
+        self.weather_display.config(
+            text=f"{weather['airport']} {temp_f}°F",
+            fg=temp_color
+        )

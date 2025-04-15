@@ -13,6 +13,8 @@ class ConfigManager:
         self.last_seen_file = last_seen_file
         self.refresh_interval = 60  # default: 60 seconds
         self.timezone = "America/Los_Angeles"  # default timezone
+        self.airport_code = "KTUS"  # default airport code for weather
+        self.weather_update_interval = 900  # default: 15 minutes (in seconds)
         self.feeds = []
         self.last_seen_guids = {}
         
@@ -31,6 +33,8 @@ class ConfigManager:
         if 'Settings' in config:
             self.refresh_interval = config.getint('Settings', 'refresh_interval', fallback=60)
             self.timezone = config.get('Settings', 'timezone', fallback="America/Los_Angeles")
+            self.airport_code = config.get('Settings', 'airport_code', fallback="KTUS")
+            self.weather_update_interval = config.getint('Settings', 'weather_update_interval', fallback=900)
         
         if 'Feeds' in config:
             self.feeds = []
@@ -42,7 +46,9 @@ class ConfigManager:
         config = configparser.ConfigParser()
         config['Settings'] = {
             'refresh_interval': '300',
-            'timezone': 'America/Los_Angeles'
+            'timezone': 'America/Phoenix',
+            'airport_code': 'KTUS',
+            'weather_update_interval': '900'
         }
         config['Feeds'] = {
             'BBGMKT': 'https://www.bloomberg.com/feed/markets/sitemap_index.xml',

@@ -5,6 +5,7 @@ import re
 import html
 import time
 import datetime
+import requests
 from dateutil import parser
 import pytz
 import html2text
@@ -43,6 +44,33 @@ def get_formatted_time(timestamp=None, timezone="America/Los_Angeles"):
         local_time = datetime.datetime.now(tz)
     
     return local_time.strftime("%H:%M")
+
+def get_weather_data(airport_code):
+    """Get current weather data for specified airport code"""
+    try:
+        url = f"https://aviationweather.gov/api/data/metar?ids={airport_code}&hours=0&order=id%2C-obs&format=json"
+        response = requests.get(url, timeout=10)
+        
+        if response.status_code == 200:
+            data = response.json()
+            if data and len(data) > 0:
+                weather = data[0]
+                temp_c = weather.get('temp')
+                
+                if temp_c is not None:
+                    # Convert Celsius to Fahrenheit
+                    temp_f = (temp_c * 9/5) + 32
+                    return {
+                        'temp_c': round(temp_c, 1),
+                        'temp_f': round(temp_f, 1),
+                        'airport': airport_code,
+                        'last_updated': weather.get('reportTime')
+                    }
+        
+        return None
+    except Exception as e:
+        print(f"Error fetching weather: {e}")
+        return None
 
 def truncate_headline(headline, max_length=90):
     """Truncate headline if it's too long"""
