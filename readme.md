@@ -17,11 +17,7 @@ A Python application that displays RSS feeds in a terminal-inspired interface. T
 ### Prerequisites
 
 - Python 3.6+
-- Required Python packages:
-  - tkinter (usually comes with Python)
-  - feedparser
-  - pytz
-  - python-dateutil
+- tkinter (usually comes with Python)
 
 ### Install Dependencies
 
@@ -48,7 +44,7 @@ The application uses a configuration file named `rss_config.ini` to store settin
 [Settings]
 refresh_interval = 300  # Refresh interval in seconds
 timezone = America/Phoenix  # Standard timezone name
-airport_code = KTUS  # For weather information
+airport_code = KTUS  # ICAO airport identifier for weather information
 weather_update_interval = 900  # Weather refresh interval in seconds
 
 [Feeds]
@@ -94,6 +90,11 @@ Headlines are displayed in chronological order with a numbering system, source c
 - ⌘+↑/↓ : Page up/down in article list
 - ⌘+Shift+↑/↓ : Jump to first/last article
 
+## Warnings
+This project was an experiment in vibecoding, it may not be supported or further developed. 
+
+Overindulging in the news is probably not good for you.
+
 ## About
 
-This application is inspired by the Bloomberg Terminal, Prodigy, and the old Associated Press printer in many newsrooms.
+This application was inspired by the Bloomberg Terminal, 1990s bulletin board systems, and the Associated Press teletype my college radio station retired shortly after I arrived.

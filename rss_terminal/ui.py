@@ -59,11 +59,11 @@ class TerminalUI:
     def _setup_fonts(self):
         """Set up fonts for the terminal-like display"""
         try:
-            self.terminal_font = font.Font(family="Bloomberg", size=9, weight="normal")
-            self.header_font = font.Font(family="Bloomberg", size=9, weight="bold")
+            self.terminal_font = font.Font(family="IBM Plex Mono", size=9, weight="normal")
+            self.header_font = font.Font(family="IBM Plex Mono", size=9, weight="bold")
         except:
             # Fallback to other monospace fonts
-            for font_family in ["Consolas", "Lucida Console", "Courier New", "Courier"]:
+            for font_family in ["Consolas", "Lucida Console", "Andale Mono", "Courier New", "Courier"]:
                 try:
                     self.terminal_font = font.Font(family=font_family, size=9, weight="normal")
                     self.header_font = font.Font(family=font_family, size=9, weight="bold")
@@ -72,7 +72,7 @@ class TerminalUI:
                     continue
     
     def _setup_colors(self):
-        """Set up colors for Bloomberg-like terminal display"""
+        """Set up colors for terminal display"""
         self.colors = {
             'bg': 'black',
             'header_bg': '#0f3562',  # Dark blue
@@ -213,7 +213,7 @@ class TerminalUI:
         self.root.bind("<F5>", lambda e: self.feed_manager.fetch_all_feeds())
     
     def show_startup_sequence(self):
-        """Show a Bloomberg-like startup sequence"""
+        """Show a startup sequence"""
         self.update_text(f"{'=' * 80}\n", text_style="time")
         self.update_text("  RSS TERMINAL VIEWER\n", text_style="headline")
         self.update_text(f"  Version 1.0 | {dt.datetime.now().strftime('%Y-%m-%d')}\n", text_style="time")
@@ -830,7 +830,7 @@ class TerminalUI:
         return "break"  # Prevent default handling
     
     def show_article_description(self, event=None):
-        """Show description for the selected article in Bloomberg terminal style"""
+        """Show description for the selected article in terminal style"""
         if not self.feed_manager.filtered_articles or self.selected_article_index < 0:
             self.update_status("No article selected")
             return "break"
@@ -849,7 +849,7 @@ class TerminalUI:
         y = self.root.winfo_y() + (self.root.winfo_height() - window_height) // 2
         desc_window.geometry(f'{window_width}x{window_height}+{x}+{y}')
         
-        # Bloomberg-style top header bar in blue
+        # Terminal-style top header bar in blue
         header_frame = tk.Frame(desc_window, bg=self.colors['header_bg'], height=30)
         header_frame.pack(fill=tk.X, padx=0, pady=0)
         

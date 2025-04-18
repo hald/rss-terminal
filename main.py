@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 RSS Terminal - Main entry point
-A Bloomberg terminal-inspired RSS feed reader application
+A terminal-inspired RSS feed reader application
 """
 import tkinter as tk
 import sys

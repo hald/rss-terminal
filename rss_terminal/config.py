@@ -51,10 +51,9 @@ class ConfigManager:
             'weather_update_interval': '900'
         }
         config['Feeds'] = {
-            'BBGMKT': 'https://www.bloomberg.com/feed/markets/sitemap_index.xml',
-            'RTRSFI': 'https://www.reutersagency.com/feed/',
-            'BBCNWS': 'http://feeds.bbci.co.uk/news/rss.xml',
-            'CNNTOP': 'http://rss.cnn.com/rss/edition.rss'
+            'BN_MRKT': 'https://feeds.bloomberg.com/markets/news.rss',
+            'WSJTECH': 'https://www.reutersagency.com/feed/',
+            'BBCNWS': 'https://feeds.bbci.co.uk/news/rss.xml'
         }
         
         with open(self.config_file, 'w') as f:

@@ -1,5 +1,5 @@
 """
-RSS Terminal - A terminal-style RSS feed reader with a Bloomberg terminal-inspired interface
+RSS Terminal - An RSS feed reader with a terminal-inspired interface
 """
 
 __version__ = "1.0.0"
