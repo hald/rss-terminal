@@ -21,6 +21,8 @@ A Python application that displays RSS feeds in a terminal-inspired interface. T
 - Python 3.6+
 - tkinter (usually comes with Python)
 
+While not required, install the [IBM Plex Mono](https://fonts.google.com/specimen/IBM+Plex+Mono) font for the best experience.
+
 ### Install Dependencies
 
 ```bash
