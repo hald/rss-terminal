@@ -56,28 +56,6 @@ WSJ_TCH = https://feeds.content.dowjones.io/public/rss/RSSWSJD
 
 Source codes are displayed next to headlines in the terminal interface. For an authentic terminal look, use 3-6 character source codes.
 
-### Timezone Configuration
-
-The application uses standard timezone names. Some common examples:
-- `America/Phoenix` (US Mountain, GMT-7)
-- `America/Los_Angeles` (US Pacific, GMT-7/8)
-- `America/New_York` (US Eastern, GMT-4/5)
-- `Europe/London` (UK, GMT/BST)
-- `Asia/Tokyo` (Japan, GMT+9)
-
-## Interface Elements
-
-The application mimics the key elements of a news terminal:
-
-- Top navigation menu with dropdown
-- Securities ticker bar
-- Function menu with blue background
-- News sections with headlines, sources and timestamps
-- Status bar with function indicators
-- Dense, information-rich layout
-
-Headlines are displayed in chronological order with a numbering system, source code, and timestamp. Clicking any headline opens the article details.
-
 ## Keyboard Shortcuts
 
 - ↑/↓ : Navigate between headlines
