@@ -2,6 +2,8 @@
 
 A Python application that displays RSS feeds in a terminal-inspired interface. This app provides a nostalgic and professional financial news experience with real-time updates from various sources.
 
+![RSS Terminal App Screenshot](rss-terminal.png)
+
 ## Features
 
 - Authentic retro terminal UI aesthetic
@@ -69,7 +71,7 @@ Source codes are displayed next to headlines in the terminal interface. For an a
 - ⌘+Shift+↑/↓ : Jump to first/last article
 
 ## Warnings
-This project was an experiment in vibecoding, it may not be supported or further developed. 
+This project was an experiment in [vibecoding](https://www.haldick.com/blog/a-vibecoding-postmortem), it may not be supported or further developed. 
 
 Overindulging in the news is probably not good for you.
 
