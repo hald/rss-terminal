@@ -15,6 +15,9 @@ class ConfigManager:
         self.timezone = "America/Los_Angeles"  # default timezone
         self.airport_code = "KTUS"  # default airport code for weather
         self.weather_update_interval = 900  # default: 15 minutes (in seconds)
+        self.stock_symbols = ["^GSPC", "^IXIC", "^DJI"]  # default: S&P 500, NASDAQ, Dow Jones
+        self.stock_update_interval = 300  # default: 5 minutes (in seconds)
+        self.show_change_percent = True  # show percentage change in display
         self.feeds = []
         self.last_seen_guids = {}
         
@@ -36,6 +39,12 @@ class ConfigManager:
             self.airport_code = config.get('Settings', 'airport_code', fallback="KTUS")
             self.weather_update_interval = config.getint('Settings', 'weather_update_interval', fallback=900)
         
+        if 'Stock' in config:
+            symbols_str = config.get('Stock', 'symbols', fallback="^GSPC,^IXIC,^DJI")
+            self.stock_symbols = [s.strip().upper() for s in symbols_str.split(',') if s.strip()]
+            self.stock_update_interval = config.getint('Stock', 'update_interval', fallback=300)
+            self.show_change_percent = config.getboolean('Stock', 'show_change_percent', fallback=True)
+        
         if 'Feeds' in config:
             self.feeds = []
             for key, url in config['Feeds'].items():
@@ -49,6 +58,11 @@ class ConfigManager:
             'timezone': 'America/Phoenix',
             'airport_code': 'KTUS',
             'weather_update_interval': '900'
+        }
+        config['Stock'] = {
+            'symbols': '^GSPC,^IXIC,^DJI',
+            'update_interval': '300',
+            'show_change_percent': 'true'
         }
         config['Feeds'] = {
             'BN_MRKT': 'https://feeds.bloomberg.com/markets/news.rss',

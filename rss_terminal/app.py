@@ -6,6 +6,7 @@ import tkinter as tk
 
 from rss_terminal.config import ConfigManager
 from rss_terminal.feed_manager import FeedManager
+from rss_terminal.stock_manager import StockManager
 from rss_terminal.ui import TerminalUI
 
 class RSSTerminalApp:
@@ -23,11 +24,17 @@ class RSSTerminalApp:
         # Initialize feed manager
         self.feed_manager = FeedManager(self.config_manager)
         
+        # Initialize stock manager
+        self.stock_manager = StockManager(self.config_manager)
+        
         # Initialize UI 
         self.ui = TerminalUI(self.root, self.config_manager, self.feed_manager)
         
         # Set up the feed update callback
         self.feed_manager.fetch_callback = self.ui.handle_feed_update
+        
+        # Set up the stock update callback
+        self.stock_manager.fetch_callback = self.ui.handle_stock_update
         
         # Start background feed fetching
         self.initial_setup()
@@ -42,8 +49,15 @@ class RSSTerminalApp:
         
         # Start background thread for periodic fetching
         self.feed_manager.start_fetching(self.ui.handle_feed_update)
+        
+        # Start background stock fetching with initial delay
+        self.stock_manager.start_fetching(self.ui.handle_stock_update)
+        
+        # Schedule initial stock fetch (after feed fetch)
+        self.root.after(5000, self.stock_manager.fetch_stock_data)
     
     def on_closing(self):
         """Cleanup when closing the application"""
         self.feed_manager.stop_fetching()
+        self.stock_manager.stop_fetching()
         self.root.destroy()

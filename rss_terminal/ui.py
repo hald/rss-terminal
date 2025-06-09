@@ -41,6 +41,10 @@ class TerminalUI:
         
         # Start weather update
         self.fetch_weather()
+        
+        # Initialize stock display state
+        self.current_stock_index = 0
+        self.stock_data = {}
     
     def _setup_window(self):
         """Configure the main window"""
@@ -106,32 +110,42 @@ class TerminalUI:
         self.filter_frame = tk.Frame(self.root, bg=self.colors['bg'], height=25)
         self.filter_frame.pack(fill=tk.X, padx=0, pady=0)
         
-        # Add "ALL" filter option
-        all_filter = tk.Label(self.filter_frame, text="ALL", 
-                             font=self.header_font, bg=self.colors['bg'],
-                             fg=self.colors['highlight'],
-                             padx=10, pady=3)
-        all_filter.pack(side=tk.LEFT, padx=2)
-        all_filter.bind("<Button-1>", lambda e: self.set_filter("ALL"))
+        # Collapsed filter display - shows current filter with dropdown indicator
+        self.current_filter_display = tk.Label(self.filter_frame, text="📰 ALL ▼", 
+                                             font=self.header_font, bg=self.colors['bg'],
+                                             fg=self.colors['highlight'],
+                                             padx=10, pady=3, cursor="hand2")
+        self.current_filter_display.pack(side=tk.LEFT, padx=2)
+        self.current_filter_display.bind("<Button-1>", self._show_filter_menu)
         
         # Add separator
         separator = tk.Label(self.filter_frame, text="|", font=self.header_font, 
                             bg=self.colors['bg'], fg=self.colors['text'])
         separator.pack(side=tk.LEFT)
         
-        # Add filter for each feed source
-        for feed in self.config.feeds:
-            feed_filter = tk.Label(self.filter_frame, text=feed['name'], 
-                                  font=self.header_font, bg=self.colors['bg'],
-                                  fg=self.colors['text'],
-                                  padx=10, pady=3)
-            feed_filter.pack(side=tk.LEFT, padx=2)
-            feed_filter.bind("<Button-1>", lambda e, name=feed['name']: self.set_filter(name))
+        # Stock ticker display frame to hold multiple colored labels
+        self.stock_frame = tk.Frame(self.filter_frame, bg=self.colors['bg'])
+        self.stock_frame.pack(side=tk.LEFT, padx=10)
         
-        # Right side information - weather display and time
+        # Initial loading label
+        self.stock_loading_label = tk.Label(self.stock_frame, text="📈 Loading...", 
+                                          font=self.header_font, bg=self.colors['bg'], fg=self.colors['yellow'])
+        self.stock_loading_label.pack(side=tk.LEFT)
+        
+        # Add separator
+        separator2 = tk.Label(self.filter_frame, text="|", font=self.header_font, 
+                             bg=self.colors['bg'], fg=self.colors['text'])
+        separator2.pack(side=tk.RIGHT, padx=5)
+        
+        # Weather display
         self.weather_display = tk.Label(self.filter_frame, text="", 
                               font=self.header_font, bg=self.colors['bg'], fg=self.colors['green'])
         self.weather_display.pack(side=tk.RIGHT, padx=5)
+        
+        # Add separator
+        separator3 = tk.Label(self.filter_frame, text="|", font=self.header_font, 
+                             bg=self.colors['bg'], fg=self.colors['text'])
+        separator3.pack(side=tk.RIGHT)
         
         # Time display
         self.time_display = tk.Label(self.filter_frame, text=get_formatted_time(timezone=self.config.timezone), 
@@ -177,7 +191,7 @@ class TerminalUI:
         
         # Add keyboard shortcuts info
         shortcuts_label = tk.Label(self.status_frame,
-                                  text="↑/↓: Navigate | Enter: Open | Tab: Cycle Feeds | F5: Refresh | Home: Newest",
+                                  text="↑/↓: Navigate | Enter: Open | Tab: Cycle Feeds | F5: Refresh | S: Stocks | Home: Newest",
                                   font=self.terminal_font, bg='#333333', fg='#AAAAAA', anchor='e')
         shortcuts_label.pack(side=tk.RIGHT, padx=10)
     
@@ -211,6 +225,10 @@ class TerminalUI:
         
         # Refresh key
         self.root.bind("<F5>", lambda e: self.feed_manager.fetch_all_feeds())
+        
+        # Stock navigation
+        self.root.bind("s", self.cycle_stock_symbol)
+        self.root.bind("S", self.show_stock_details)
     
     def show_startup_sequence(self):
         """Show a startup sequence"""
@@ -581,18 +599,34 @@ class TerminalUI:
         # Clear the new article tags list
         self.new_article_tags = []
     
+    def _show_filter_menu(self, event=None):
+        """Show dropdown menu for filter selection"""
+        # Create popup menu
+        filter_menu = tk.Menu(self.root, tearoff=0, bg=self.colors['bg'], 
+                             fg=self.colors['text'], activebackground=self.colors['selected'])
+        
+        # Add ALL option
+        filter_menu.add_command(label="📰 ALL", command=lambda: self.set_filter("ALL"))
+        filter_menu.add_separator()
+        
+        # Add each feed option
+        for feed in self.config.feeds:
+            filter_menu.add_command(label=f"📰 {feed['name']}", 
+                                  command=lambda name=feed['name']: self.set_filter(name))
+        
+        # Show menu at cursor position
+        try:
+            filter_menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            filter_menu.grab_release()
+    
     def set_filter(self, feed_name):
         """Set the current feed filter and refresh display"""
         self.feed_manager.apply_filter(feed_name)
         self.display_articles()
         
-        # Update the filter buttons
-        for widget in self.filter_frame.winfo_children():
-            if isinstance(widget, tk.Label) and widget.cget("text") not in ["|", self.time_display.cget("text")]:
-                if widget.cget("text") == feed_name:
-                    widget.config(fg=self.colors['highlight'])
-                else:
-                    widget.config(fg=self.colors['text'])
+        # Update the collapsed filter display
+        self.current_filter_display.config(text=f"📰 {feed_name} ▼")
     
     def select_previous_article(self, event=None):
         """Select the previous article in the list"""
@@ -1144,3 +1178,321 @@ class TerminalUI:
             text=f"{weather_icon} {weather['airport']} {temp_f}°F",
             fg=temp_color
         )
+    
+    def handle_stock_update(self, stocks, error=False):
+        """Handle stock data update from stock manager"""
+        if error:
+            self._show_stock_error()
+            return
+        
+        if stocks:
+            self.stock_data = stocks
+            self.update_stock_display()
+        else:
+            self._show_stock_no_data()
+    
+    def update_stock_display(self):
+        """Update the stock ticker display with all three market indexes"""
+        if not self.stock_data or not self.config.stock_symbols:
+            return
+        
+        # Clear existing stock labels
+        self._clear_stock_labels()
+        
+        # Get symbols that have data
+        available_symbols = [symbol for symbol in self.config.stock_symbols if symbol in self.stock_data]
+        
+        if not available_symbols:
+            self._show_stock_loading()
+            return
+        
+        # Create labels for each stock with individual colors
+        for i, symbol in enumerate(available_symbols):
+            stock = self.stock_data[symbol]
+            
+            # Get short name for display
+            display_name = self._get_index_display_name(symbol)
+            
+            # Format the data
+            price_str = self._format_stock_price(stock['current_price'])
+            change_str = self._format_stock_change_compact(stock['price_change'], stock['percent_change'])
+            
+            # Determine color based on change
+            if stock['price_change'] > 0:
+                color = self.colors['green']
+            elif stock['price_change'] < 0:
+                color = self.colors['red']
+            else:
+                color = self.colors['yellow']
+            
+            # Create display text
+            if i == 0:
+                display_text = f"📈 {display_name} {price_str} {change_str}"
+            else:
+                display_text = f"{display_name} {price_str} {change_str}"
+            
+            # Create label
+            stock_label = tk.Label(self.stock_frame, text=display_text,
+                                 font=self.header_font, bg=self.colors['bg'], fg=color)
+            stock_label.pack(side=tk.LEFT)
+            
+            # Add separator if not last item
+            if i < len(available_symbols) - 1:
+                sep_label = tk.Label(self.stock_frame, text=" | ",
+                                   font=self.header_font, bg=self.colors['bg'], fg=self.colors['text'])
+                sep_label.pack(side=tk.LEFT)
+    
+    def _get_index_display_name(self, symbol):
+        """Get short display name for market index symbols"""
+        index_names = {
+            '^GSPC': 'S&P',
+            '^IXIC': 'NASDAQ', 
+            '^DJI': 'DOW'
+        }
+        return index_names.get(symbol, symbol.replace('^', ''))
+    
+    def _get_index_full_name(self, symbol):
+        """Get full name for market index symbols"""
+        full_names = {
+            '^GSPC': 'S&P 500 Index',
+            '^IXIC': 'NASDAQ Composite Index',
+            '^DJI': 'Dow Jones Industrial Average'
+        }
+        return full_names.get(symbol, symbol)
+    
+    def _clear_stock_labels(self):
+        """Clear all existing stock labels from the frame"""
+        for widget in self.stock_frame.winfo_children():
+            widget.destroy()
+    
+    def _show_stock_loading(self):
+        """Show loading message"""
+        loading_label = tk.Label(self.stock_frame, text="📈 Loading...",
+                                font=self.header_font, bg=self.colors['bg'], fg=self.colors['yellow'])
+        loading_label.pack(side=tk.LEFT)
+    
+    def _show_stock_error(self):
+        """Show error message"""
+        self._clear_stock_labels()
+        error_label = tk.Label(self.stock_frame, text="📈 Error",
+                              font=self.header_font, bg=self.colors['bg'], fg=self.colors['red'])
+        error_label.pack(side=tk.LEFT)
+    
+    def _show_stock_no_data(self):
+        """Show no data message"""
+        self._clear_stock_labels()
+        no_data_label = tk.Label(self.stock_frame, text="📈 No Data",
+                                font=self.header_font, bg=self.colors['bg'], fg=self.colors['time'])
+        no_data_label.pack(side=tk.LEFT)
+    
+    def _format_stock_price(self, price):
+        """Format stock price for display"""
+        if price is None:
+            return "N/A"
+        
+        # Always show two decimal places, no dollar sign
+        return f"{price:.2f}"
+    
+    def _format_stock_change(self, change, percent_change):
+        """Format stock change for display"""
+        if change is None or percent_change is None:
+            return ""
+        
+        percent_str = f"{percent_change:+.1f}%"
+        
+        if change > 0:
+            return f"▲{percent_str}"
+        elif change < 0:
+            return f"▼{percent_str}"
+        else:
+            return f"={percent_str}"
+    
+    def _format_stock_change_compact(self, change, percent_change):
+        """Format stock change for compact display (just percentage)"""
+        if change is None or percent_change is None:
+            return ""
+        
+        if change > 0:
+            return f"▲{percent_change:.1f}%"
+        elif change < 0:
+            return f"▼{abs(percent_change):.1f}%"
+        else:
+            return f"={percent_change:.1f}%"
+    
+    def cycle_stock_symbol(self, event=None):
+        """Cycle to next stock symbol for detail view selection"""
+        if self.stock_data and self.config.stock_symbols:
+            available_symbols = [symbol for symbol in self.config.stock_symbols if symbol in self.stock_data]
+            if len(available_symbols) > 1:
+                self.current_stock_index = (self.current_stock_index + 1) % len(available_symbols)
+                # Show brief status message indicating current selection
+                current_symbol = available_symbols[self.current_stock_index]
+                display_name = self._get_index_display_name(current_symbol)
+                self.update_status(f"Selected for details: {display_name}")
+        return "break"
+    
+    def show_stock_details(self, event=None):
+        """Show detailed information for the currently displayed stock"""
+        if not self.stock_data or not self.config.stock_symbols:
+            return "break"
+        
+        available_symbols = [symbol for symbol in self.config.stock_symbols if symbol in self.stock_data]
+        if not available_symbols:
+            return "break"
+        
+        symbol = available_symbols[self.current_stock_index]
+        stock = self.stock_data[symbol]
+        
+        # Create stock detail popup window
+        stock_window = tk.Toplevel(self.root)
+        stock_window.title(f"{symbol} - Stock Details")
+        stock_window.configure(bg=self.colors['bg'])
+        
+        # Set window size and position relative to main window
+        window_width = 600
+        window_height = 400
+        x = self.root.winfo_x() + (self.root.winfo_width() - window_width) // 2
+        y = self.root.winfo_y() + (self.root.winfo_height() - window_height) // 2
+        stock_window.geometry(f'{window_width}x{window_height}+{x}+{y}')
+        
+        # Terminal-style header bar
+        header_frame = tk.Frame(stock_window, bg=self.colors['header_bg'], height=30)
+        header_frame.pack(fill=tk.X, padx=0, pady=0)
+        
+        header_label = tk.Label(
+            header_frame, 
+            text=f"📈 {symbol} STOCK DETAILS",
+            font=self.header_font, 
+            bg=self.colors['header_bg'],
+            fg=self.colors['text'], 
+            anchor='w', 
+            padx=10, 
+            pady=5
+        )
+        header_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        
+        # Current time on the right side of header
+        from rss_terminal.utils import get_formatted_time
+        current_time_str = get_formatted_time(timezone=self.config.timezone)
+        
+        date_label = tk.Label(
+            header_frame,
+            text=current_time_str,
+            font=self.header_font,
+            bg=self.colors['header_bg'],
+            fg=self.colors['yellow'],
+            padx=10,
+            pady=5
+        )
+        date_label.pack(side=tk.RIGHT)
+        
+        # Main content area
+        content_frame = tk.Frame(stock_window, bg=self.colors['bg'])
+        content_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        
+        # Index name and symbol
+        display_name = self._get_index_display_name(symbol)
+        full_name = self._get_index_full_name(symbol)
+        title_label = tk.Label(
+            content_frame, 
+            text=f"{full_name} ({display_name})",
+            font=self.header_font, 
+            bg=self.colors['bg'],
+            fg=self.colors['highlight'],
+            anchor='w'
+        )
+        title_label.pack(fill=tk.X, pady=(0, 20))
+        
+        # Stock data grid
+        data_frame = tk.Frame(content_frame, bg='#111111', padx=15, pady=15)
+        data_frame.pack(fill=tk.X, pady=10)
+        
+        # Current Price
+        self._add_stock_data_row(data_frame, 0, "CURRENT PRICE:", 
+                                self._format_stock_price(stock['current_price']), 
+                                self.colors['green'] if stock['price_change'] >= 0 else self.colors['red'])
+        
+        # Price Change
+        change_color = self.colors['green'] if stock['price_change'] >= 0 else self.colors['red']
+        change_text = f"{stock['price_change']:+.2f} ({stock['percent_change']:+.1f}%)"
+        self._add_stock_data_row(data_frame, 1, "CHANGE:", change_text, change_color)
+        
+        # Previous Close
+        self._add_stock_data_row(data_frame, 2, "PREV CLOSE:", 
+                                self._format_stock_price(stock['previous_close']), 
+                                self.colors['yellow'])
+        
+        # Market Status
+        market_color = self.colors['green'] if stock['market_state'] == 'OPEN' else self.colors['time']
+        self._add_stock_data_row(data_frame, 3, "MARKET:", stock['market_state'], market_color)
+        
+        # After hours data if available
+        if stock.get('after_hours_price'):
+            self._add_stock_data_row(data_frame, 4, "AFTER HOURS:", 
+                                    self._format_stock_price(stock['after_hours_price']), 
+                                    self.colors['blue'])
+        
+        # Last updated
+        last_updated = stock['last_updated'].strftime('%H:%M:%S') if stock.get('last_updated') else "Unknown"
+        self._add_stock_data_row(data_frame, 5, "LAST UPDATE:", last_updated, self.colors['time'])
+        
+        # Status bar
+        status_frame = tk.Frame(stock_window, bg='#333333', height=22)
+        status_frame.pack(fill=tk.X, side=tk.BOTTOM, padx=0, pady=0)
+        
+        close_button = tk.Button(
+            status_frame, 
+            text="CLOSE [ESC]", 
+            command=stock_window.destroy,
+            bg='#333333', 
+            fg=self.colors['text'],
+            activebackground='#444444', 
+            activeforeground=self.colors['text'],
+            borderwidth=0,
+            padx=10
+        )
+        close_button.pack(side=tk.LEFT, padx=5, pady=2)
+        
+        # Keyboard shortcuts info
+        shortcuts_label = tk.Label(
+            status_frame,
+            text="ESC: Close | S: Cycle Stocks",
+            font=self.terminal_font, 
+            bg='#333333', 
+            fg='#AAAAAA', 
+            anchor='e'
+        )
+        shortcuts_label.pack(side=tk.RIGHT, padx=10)
+        
+        # Add keyboard shortcuts
+        stock_window.bind("<Escape>", lambda e: stock_window.destroy())
+        
+        # Make the window modal
+        stock_window.transient(self.root)
+        stock_window.grab_set()
+        stock_window.focus_set()
+        
+        return "break"
+    
+    def _add_stock_data_row(self, parent, row, label_text, value_text, value_color):
+        """Add a row to the stock data display"""
+        label = tk.Label(
+            parent,
+            text=label_text,
+            font=self.terminal_font,
+            bg='#111111',
+            fg=self.colors['blue'],
+            anchor='w',
+            width=15
+        )
+        label.grid(row=row, column=0, sticky='w', pady=2)
+        
+        value = tk.Label(
+            parent,
+            text=value_text,
+            font=self.terminal_font,
+            bg='#111111',
+            fg=value_color,
+            anchor='w'
+        )
+        value.grid(row=row, column=1, sticky='w', pady=2)
