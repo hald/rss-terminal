@@ -73,7 +73,7 @@ Source codes are displayed next to headlines in the terminal interface. For an a
 - ⌘+Shift+↑/↓ : Jump to first/last article
 
 ## Warnings
-This project was an experiment in [vibecoding](https://www.haldick.com/blog/a-vibecoding-postmortem), it may not be supported or further developed. 
+This project was an experiment in [vibecoding](https://www.robotonwheels.com/projects/rss-terminal), it may not be supported or further developed. 
 
 Overindulging in the news is probably not good for you.
 
